@@ -3592,6 +3592,7 @@ export type ConnectionType =
 	| "port_forwarding"
 	| "reconnecting_pty"
 	| "ssh"
+	| "tailnet"
 	| "vscode"
 	| "workspace_app";
 
@@ -3600,6 +3601,7 @@ export const ConnectionTypes: ConnectionType[] = [
 	"port_forwarding",
 	"reconnecting_pty",
 	"ssh",
+	"tailnet",
 	"vscode",
 	"workspace_app",
 ];
