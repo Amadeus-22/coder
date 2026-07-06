@@ -889,6 +889,8 @@ The abandon chat goroutine is responsible for abandoning the chat. It is spawned
 
 Deployments without the `unlimited_chat_agents` entitlement (granted by any Premium license) may execute at most `MaxConcurrentAgents` chatd agentic loops at the same time. The limiter is a weighted semaphore shared by all runners of one chat worker. It is process-local and ephemeral: each replica enforces its own cap, and a restarted replica starts with every slot free and re-admits chats as their runners re-acquire, so slot leaks cannot survive a crash. Wait-queue order is not preserved across restarts.
 
+Known multi-replica limitation: chat acquisition is not admission controlled by the limiter. A replica may acquire ownership of more runnable chats than it has free slots (up to its acquisition batch size) and keep them heartbeated while they queue on its local semaphore, even when another replica has free slots. Acquisition cannot simply be gated on slot availability because acquired chats also need non-generation work (interrupts, requires-action timeouts, abandons) that must never wait for slots. Cross-replica admission control requires DB-backed coordination, which is deliberately out of scope for the per-replica v1 limiter.
+
 ### Slot semantics
 
 A slot is a lease held by a chat's runner while the chat executes one turn:
