@@ -57,6 +57,10 @@ type runner struct {
 	tasksByIndex  map[taskIndexKey]taskInstanceID
 	localLocks    *localLockSet
 	debugTurn     *runnerDebugTurn
+	// lease is this chat's hold on a concurrent-agent slot. Generation
+	// tasks acquire it, turn boundaries release it, and teardown closes
+	// it unconditionally.
+	lease *agentSlotLease
 }
 
 func newRunner(ctx context.Context, mgr *runnerManager, rec *runnerRecord, opts chatWorkerOptions) *runner {
@@ -69,10 +73,14 @@ func newRunner(ctx context.Context, mgr *runnerManager, rec *runnerRecord, opts 
 		tasksByIndex: make(map[taskIndexKey]taskInstanceID),
 		localLocks:   newLocalLockSet(),
 		debugTurn:    newRunnerDebugTurn(ctx, opts.Logger),
+		lease:        opts.AgentLimiter.newLease(rec.key.ChatID),
 	}
 }
 
 func (r *runner) run() {
+	// Runs after waitForTasks on the shutdown path, so the slot is
+	// force-released even if a turn boundary was never observed.
+	defer r.lease.Close()
 	if !r.bootstrap() {
 		return
 	}
@@ -177,6 +185,14 @@ func (r *runner) acceptState(state runnerStateUpdate) {
 }
 
 func (r *runner) spawnForState(state runnerStateUpdate) {
+	// Any state that does not map to generation ends the turn's hold on
+	// the agent slot. The release is deferred until the in-flight
+	// generation task (canceled above) finishes unwinding; the spawned
+	// task below never waits for a slot, so interrupt finalization and
+	// abandons cannot be blocked by the limiter.
+	if state.Archived || state.Status != database.ChatStatusRunning {
+		r.lease.MarkTurnComplete()
+	}
 	if state.Archived {
 		r.spawnTaskIfNeeded(taskKindAbandon, state)
 		return
@@ -244,6 +260,21 @@ func (r *runner) runTask(
 		WorkerID: input.WorkerID,
 		RunnerID: input.RunnerID,
 	}
+	if kind == taskKindGeneration {
+		r.lease.BeginTask()
+		defer r.lease.EndTask()
+		// Acquire the agent slot outside the retry wrapper so a long
+		// queue wait cannot churn 15-minute task attempts. The wait
+		// still honors task cancellation: a state change or shutdown
+		// cancels ctx and unblocks it. Mid-turn tasks already hold the
+		// slot, so this is usually a no-op.
+		if err := r.lease.EnsureHeld(ctx); err != nil {
+			if ctx.Err() == nil {
+				r.opts.Logger.Warn(ctx, "chatworker task failed to acquire agent slot", slogError(err))
+			}
+			return
+		}
+	}
 	err := runTaskWithRetry(ctx, r.opts.retryOptions(), kind, taskInfo, func(ctx context.Context) error {
 		unlock, ok := r.localLocks.acquire(ctx, key)
 		if !ok {
@@ -256,7 +287,12 @@ func (r *runner) runTask(
 
 		switch kind {
 		case taskKindGeneration:
-			return r.opts.TaskStarter.StartGeneration(ctx, input)
+			// Re-acquire when a failed Resume after wait_agent left the
+			// lease unheld; a no-op while the slot is held.
+			if err := r.lease.EnsureHeld(ctx); err != nil {
+				return errors.Join(errTaskExpectedExit, xerrors.Errorf("runTask ensure agent slot: %w", err))
+			}
+			return r.opts.TaskStarter.StartGeneration(r.lease.attachToContext(ctx), input)
 		case taskKindInterrupt:
 			return r.opts.TaskStarter.StartInterrupt(ctx, input)
 		case taskKindRequiresActionTimeout:

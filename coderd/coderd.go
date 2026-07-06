@@ -899,6 +899,7 @@ func New(options *Options) *API {
 				WebpushDispatcher:              options.WebPushDispatcher,
 				UsageTracker:                   options.WorkspaceUsageTracker,
 				PrometheusRegistry:             options.PrometheusRegistry,
+				Entitlements:                   options.Entitlements,
 				OIDCTokenSource:                oidcMCPSrc,
 				NotificationsEnqueuer:          options.NotificationsEnqueuer,
 				Auditor:                        &api.Auditor,

@@ -271,6 +271,12 @@ coderd_build_info{version="",revision=""} 0
 # HELP coderd_chat_auto_archive_records_archived_total Total number of chats archived by the auto-archive job (counting both roots and cascaded children).
 # TYPE coderd_chat_auto_archive_records_archived_total counter
 coderd_chat_auto_archive_records_archived_total 0
+# HELP coderd_chatd_agent_slot_waits_total Total number of times a chat turn blocked waiting for a concurrent-agent slot.
+# TYPE coderd_chatd_agent_slot_waits_total counter
+coderd_chatd_agent_slot_waits_total 0
+# HELP coderd_chatd_agent_slots_in_use Number of concurrent-agent slots held by executing chat turns. Stays zero on deployments entitled to unlimited chat agents.
+# TYPE coderd_chatd_agent_slots_in_use gauge
+coderd_chatd_agent_slots_in_use 0
 # HELP coderd_chatd_chats Number of chats being processed, by state.
 # TYPE coderd_chatd_chats gauge
 coderd_chatd_chats{state=""} 0

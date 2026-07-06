@@ -32,6 +32,7 @@ import (
 	"github.com/coder/coder/v2/coderd/database/db2sdk"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
 	"github.com/coder/coder/v2/coderd/database/pubsub"
+	"github.com/coder/coder/v2/coderd/entitlements"
 	"github.com/coder/coder/v2/coderd/notifications"
 	coderdpubsub "github.com/coder/coder/v2/coderd/pubsub"
 	"github.com/coder/coder/v2/coderd/rbac"
@@ -2901,6 +2902,12 @@ type Config struct {
 
 	PrometheusRegistry prometheus.Registerer
 
+	// Entitlements gates the concurrent-agent cap: deployments entitled
+	// to codersdk.FeatureUnlimitedChatAgents bypass it. Nil defaults to
+	// an unlicensed set, so at most MaxConcurrentAgents agentic loops
+	// execute concurrently per replica.
+	Entitlements *entitlements.Set
+
 	// OIDCTokenSource resolves the calling user's OIDC access
 	// token for MCP servers configured with auth_type=user_oidc.
 	// May be nil if the deployment has no OIDC provider; servers
@@ -3024,12 +3031,18 @@ func New(ps pubsub.Pubsub, cfg Config) *Server {
 	p.streamSyncPoller = newStreamSyncPoller(ctx, cfg.Database, clk, cfg.Logger.Named("chatstream"))
 	p.streamSyncPoller.Start()
 	chatWorker, err := newChatWorker(p, chatWorkerOptions{
-		WorkerID:              workerID,
-		Store:                 cfg.Database,
-		Pubsub:                ps,
-		Logger:                cfg.Logger.Named("chatworker"),
-		Clock:                 clk,
-		MessagePartBuffer:     p.messagePartBuffer,
+		WorkerID:          workerID,
+		Store:             cfg.Database,
+		Pubsub:            ps,
+		Logger:            cfg.Logger.Named("chatworker"),
+		Clock:             clk,
+		MessagePartBuffer: p.messagePartBuffer,
+		AgentLimiter: newAgentLimiter(agentLimiterOptions{
+			Entitlements: cfg.Entitlements,
+			Clock:        clk,
+			Logger:       cfg.Logger.Named("chatworker"),
+			Registerer:   cfg.PrometheusRegistry,
+		}),
 		AcquisitionInterval:   pendingChatAcquireInterval,
 		AcquisitionBatchSize:  maxChatsPerAcquire,
 		HeartbeatInterval:     chatHeartbeatInterval,

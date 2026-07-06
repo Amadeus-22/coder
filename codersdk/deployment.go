@@ -199,6 +199,11 @@ const (
 	FeatureBoundary               FeatureName = "boundary"
 	FeatureServiceAccounts        FeatureName = "service_accounts"
 	FeatureAIGovernanceUserLimit  FeatureName = "ai_governance_user_limit"
+	// FeatureUnlimitedChatAgents lifts the built-in cap on concurrently
+	// executing chatd agentic loops (chat turns, including chat
+	// subagents). Deployments without this feature are limited to
+	// chatd.MaxConcurrentAgents concurrent loops per replica.
+	FeatureUnlimitedChatAgents FeatureName = "unlimited_chat_agents"
 )
 
 var (
@@ -231,6 +236,7 @@ var (
 		FeatureBoundary,
 		FeatureServiceAccounts,
 		FeatureAIGovernanceUserLimit,
+		FeatureUnlimitedChatAgents,
 	}
 
 	// FeatureNamesMap is a map of all feature names for quick lookups.
@@ -279,6 +285,7 @@ func (n FeatureName) AlwaysEnable() bool {
 		FeatureWorkspaceExternalAgent:     true,
 		FeatureBoundary:                   true,
 		FeatureServiceAccounts:            true,
+		FeatureUnlimitedChatAgents:        true,
 	}[n]
 }
 
@@ -286,7 +293,7 @@ func (n FeatureName) AlwaysEnable() bool {
 func (n FeatureName) Enterprise() bool {
 	switch n {
 	// Add all features that should be excluded in the Enterprise feature set.
-	case FeatureMultipleOrganizations, FeatureCustomRoles, FeatureServiceAccounts:
+	case FeatureMultipleOrganizations, FeatureCustomRoles, FeatureServiceAccounts, FeatureUnlimitedChatAgents:
 		return false
 	default:
 		return true

@@ -5049,6 +5049,7 @@ export type FeatureName =
 	| "service_accounts"
 	| "task_batch_actions"
 	| "template_rbac"
+	| "unlimited_chat_agents"
 	| "user_limit"
 	| "user_role_management"
 	| "workspace_batch_actions"
@@ -5078,6 +5079,7 @@ export const FeatureNames: FeatureName[] = [
 	"service_accounts",
 	"task_batch_actions",
 	"template_rbac",
+	"unlimited_chat_agents",
 	"user_limit",
 	"user_role_management",
 	"workspace_batch_actions",

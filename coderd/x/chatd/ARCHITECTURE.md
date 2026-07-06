@@ -885,6 +885,33 @@ The dynamic tools timeout goroutine is responsible for waiting for the dynamic t
 
 The abandon chat goroutine is responsible for abandoning the chat. It is spawned whenever the event processing logic determines that the chat no longer needs to be owned by the runner. It applies the `Abandon` transition on the core state machine after checking that the chat is still owned by the runner.
 
+## Concurrent-agent limiter
+
+Deployments without the `unlimited_chat_agents` entitlement (granted by any Premium license) may execute at most `MaxConcurrentAgents` chatd agentic loops at the same time. The limiter is a weighted semaphore shared by all runners of one chat worker. It is process-local and ephemeral: each replica enforces its own cap, and a restarted replica starts with every slot free and re-admits chats as their runners re-acquire, so slot leaks cannot survive a crash. Wait-queue order is not preserved across restarts.
+
+### Slot semantics
+
+A slot is a lease held by a chat's runner while the chat executes one turn:
+
+- The first generation goroutine of a turn acquires the slot before invoking generation work. The acquire happens outside the per-attempt timeout, so a long queue wait does not churn task retries; a state change or shutdown cancels the wait through the task context.
+- Step boundaries (`CommitStep`) keep the slot: replacement generation goroutines within the same turn find the lease already held.
+- Turn boundaries release it: `FinishTurn`, `FinishError`, and `EnterRequiresAction` mark the turn complete from within the generation goroutine, and the runner marks it complete whenever it processes an event that does not map to generation work (interrupt, archive, waiting, error). The actual release is deferred until the last in-flight generation goroutine exits, so a slot is never freed while a chat is still unwinding provider work.
+- When `FinishTurn` promotes a queued message, the chat stays `running` but the slot is still released; the promoted turn re-acquires at the back of the waiter queue, so one busy chat cannot monopolize a slot across back-to-back turns.
+- Interrupt, dynamic tools timeout, and abandon goroutines never wait for a slot.
+- Runner teardown closes the lease unconditionally, releasing any held slot.
+
+### Subagents
+
+Subagent chats are ordinary chats and hold their own slots while executing. To keep `spawn_agent` plus `wait_agent` deadlock-free at any capacity, the parent yields its slot while blocked in `wait_agent`: the runner injects the lease into the generation task context, and the subagent wait pauses it before blocking and resumes it after. Pauses are reference counted because tool calls execute in parallel goroutines, so concurrent `wait_agent` calls share one parent slot. Resume blocks until a slot frees; a canceled resume leaves the lease unheld and the next generation attempt re-acquires it.
+
+### Entitlement bypass
+
+The bypass is evaluated at every acquire attempt by checking the `unlimited_chat_agents` feature on the deployment's entitlements set. Entitled acquires skip the semaphore entirely and the lease is not injected into task contexts, so entitled deployments pay one guarded map lookup per generation goroutine and nothing else. While an acquire is blocked, it re-checks the entitlement on a coarse interval, so installing a Premium license unblocks queued chats within seconds without any entitlement-change plumbing; license expiry re-imposes the cap on subsequent acquires.
+
+### Observability
+
+The limiter exposes the `coderd_chatd_agent_slots_in_use` gauge and the `coderd_chatd_agent_slot_waits_total` counter, and it logs when a chat starts waiting for a slot and when it acquires one. There is no API or UI surface for the queued state.
+
 ## Runner cleanup
 
 When the manager cleans up a runner, the runner must cancel all goroutines it has spawned and unsubscribe from pubsub.

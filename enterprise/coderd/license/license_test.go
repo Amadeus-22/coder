@@ -1407,6 +1407,34 @@ func TestLicenseEntitlements(t *testing.T) {
 			},
 		},
 		{
+			Name: "EnterpriseDisabledUnlimitedChatAgents",
+			Licenses: []*coderdenttest.LicenseOptions{
+				enterpriseLicense().UserLimit(100),
+			},
+			Enablements:           defaultEnablements,
+			Arguments:             license.FeatureArguments{},
+			ExpectedErrorContains: "",
+			AssertEntitlements: func(t *testing.T, entitlements codersdk.Entitlements) {
+				feature := entitlements.Features[codersdk.FeatureUnlimitedChatAgents]
+				assert.Equal(t, codersdk.EntitlementNotEntitled, feature.Entitlement)
+				assert.False(t, feature.Enabled, "unlimited chat agents only enabled for premium")
+			},
+		},
+		{
+			Name: "PremiumEnabledUnlimitedChatAgents",
+			Licenses: []*coderdenttest.LicenseOptions{
+				premiumLicense().UserLimit(100),
+			},
+			Enablements:           defaultEnablements,
+			Arguments:             license.FeatureArguments{},
+			ExpectedErrorContains: "",
+			AssertEntitlements: func(t *testing.T, entitlements codersdk.Entitlements) {
+				feature := entitlements.Features[codersdk.FeatureUnlimitedChatAgents]
+				assert.Equal(t, codersdk.EntitlementEntitled, feature.Entitlement)
+				assert.True(t, feature.Enabled, "unlimited chat agents enabled for premium")
+			},
+		},
+		{
 			Name: "CurrentAndFuture",
 			Licenses: []*coderdenttest.LicenseOptions{
 				enterpriseLicense().UserLimit(100),

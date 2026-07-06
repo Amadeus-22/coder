@@ -1407,7 +1407,7 @@ func (p *Server) awaitSubagentCompletion(
 	parentChatID uuid.UUID,
 	targetChatID uuid.UUID,
 	timeout time.Duration,
-) (database.Chat, string, error) {
+) (_ database.Chat, _ string, err error) {
 	isDescendant, err := isSubagentDescendant(ctx, p.db, parentChatID, targetChatID)
 	if err != nil {
 		return database.Chat{}, "", err
@@ -1423,6 +1423,22 @@ func (p *Server) awaitSubagentCompletion(
 	}
 	if done {
 		return handleSubagentDone(targetChat, report)
+	}
+
+	// While blocked on a child, the parent yields its concurrent-agent
+	// slot so the child (and other chats) can execute; this keeps
+	// spawn_agent + wait_agent deadlock-free even at one slot. Parallel
+	// wait_agent calls in one tool batch share the parent's slot via
+	// reference counting. Resume blocks until a slot frees; on a
+	// canceled context it leaves the lease unheld and the runner's next
+	// generation attempt re-acquires.
+	if lease, ok := agentSlotLeaseFromContext(ctx); ok {
+		lease.Pause()
+		defer func() {
+			if resumeErr := lease.Resume(ctx); resumeErr != nil && err == nil {
+				err = resumeErr
+			}
+		}()
 	}
 
 	if timeout <= 0 {
