@@ -249,12 +249,7 @@ func TestAgentSlotLease_EnsureHeldYieldsPendingRelease(t *testing.T) {
 func testAgentLimiterOptions(t *testing.T, f *workerTestFixture, starter chatWorkerTaskStarter, ents *entitlements.Set) chatWorkerOptions {
 	t.Helper()
 	opts := testOptions(t, f, starter)
-	opts.AgentLimiter = newAgentLimiter(agentLimiterOptions{
-		Entitlements:               ents,
-		Logger:                     testutil.Logger(t),
-		Capacity:                   1,
-		EntitlementRecheckInterval: 10 * time.Millisecond,
-	})
+	opts.AgentLimiter = newTestAgentLimiter(t, 1, ents)
 	return opts
 }
 

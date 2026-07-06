@@ -32,7 +32,7 @@ const MaxConcurrentAgents = 3
 // entitlement-change plumbing.
 const defaultEntitlementRecheckInterval = 10 * time.Second
 
-var errAgentSlotLeaseClosed = xerrors.New("chatd: agent slot lease closed")
+var errAgentSlotLeaseClosed = xerrors.New("agent slot lease closed")
 
 type agentLimiterOptions struct {
 	// Entitlements is consulted at every acquire attempt; nil defaults
@@ -207,9 +207,7 @@ type agentSlotLease struct {
 
 	mu sync.Mutex
 	// closed is terminal; set at runner teardown.
-	closed bool
-	// holdsUnit reports whether the lease currently holds a semaphore
-	// unit.
+	closed    bool
 	holdsUnit bool
 	// pauseRefs counts nested Pause calls. Local tool calls run in
 	// parallel goroutines, so concurrent wait_agent calls share the
