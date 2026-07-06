@@ -194,6 +194,19 @@ func agentSlotLeaseFromContext(ctx context.Context) (agentSlotLeaseHandle, bool)
 	return lease, ok
 }
 
+// releaseAgentSlotOnTransition marks the turn complete on the lease in
+// ctx. Turn finishers call it when their state transition callback
+// succeeded, regardless of the surrounding Update error, because a
+// post-commit publish failure returns an error after the transition is
+// durably committed and the retry exits on the fence without another
+// chance to release. A release after a commit failure is benign: the
+// retrying task re-acquires through EnsureHeld.
+func releaseAgentSlotOnTransition(ctx context.Context) {
+	if lease, ok := agentSlotLeaseFromContext(ctx); ok {
+		lease.MarkTurnComplete()
+	}
+}
+
 // agentSlotLease tracks one runner's hold on a concurrent-agent slot. A
 // runner owns exactly one lease for its chat, and the lease holds at
 // most one semaphore unit at a time. The lease outlives the individual

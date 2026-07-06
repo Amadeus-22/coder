@@ -922,6 +922,7 @@ func (s *taskStarter) enterRequiresAction(
 	input chatWorkerTaskStartInput,
 ) error {
 	var committed database.Chat
+	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForTask(ctx, store, input, database.ChatStatusRunning, taskFenceOptions{requireHistory: true}); err != nil {
 			return xerrors.Errorf("load chat for task: %w", err)
@@ -934,15 +935,17 @@ func (s *taskStarter) enterRequiresAction(
 			return xerrors.Errorf("load committed chat: %w", err)
 		}
 		committed = chat
+		transitionApplied = true
 		return nil
 	})
+	// External tool waits can last hours; free the agent slot as soon
+	// as the transition callback succeeded, even when the post-commit
+	// publish failed (see finishGenerationTurn).
+	if transitionApplied {
+		releaseAgentSlotOnTransition(ctx)
+	}
 	if err != nil {
 		return normalizeTaskTransitionError(err, "enter requires action")
-	}
-	if lease, ok := agentSlotLeaseFromContext(ctx); ok {
-		// External tool waits can last hours; free the agent slot as
-		// soon as the transition is committed.
-		lease.MarkTurnComplete()
 	}
 	if err := s.publishWatchAndRoute(ctx, committed, codersdk.ChatWatchEventKindActionRequired); err != nil {
 		return xerrors.Errorf("publish watch and route: %w", err)
@@ -1010,6 +1013,7 @@ func (s *taskStarter) finishGenerationTurn(
 	fence generationAttemptFence,
 ) error {
 	var committed database.Chat
+	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForGeneration(ctx, store, input, fence); err != nil {
 			return xerrors.Errorf("load chat for generation: %w", err)
@@ -1022,18 +1026,24 @@ func (s *taskStarter) finishGenerationTurn(
 			decision.promotedMessageID = finishResult.PromotedMessage.ID
 		}
 		committed = finishResult.Chat
+		transitionApplied = true
 		return nil
 	})
+	// Queue the agent-slot release whenever the transition callback
+	// succeeded, even if Update then failed: post-commit publish
+	// failures return an error after the turn is durably finished, and
+	// the retry exits on the fence without reaching this path again. A
+	// release after a commit failure is benign: the retry re-acquires
+	// through EnsureHeld. Releasing here also makes a promoted queued
+	// message re-acquire at the back of the waiter queue instead of
+	// monopolizing the slot across turns.
+	if transitionApplied {
+		releaseAgentSlotOnTransition(ctx)
+	}
 	if err != nil {
 		err := normalizeTaskTransitionError(err, "finish generation turn")
 		recordGenerationFinishFailure(input.DebugTurn, err)
 		return err
-	}
-	if lease, ok := agentSlotLeaseFromContext(ctx); ok {
-		// The turn is committed; queue the agent-slot release so a
-		// promoted queued message re-acquires at the back of the waiter
-		// queue instead of monopolizing the slot across turns.
-		lease.MarkTurnComplete()
 	}
 	input.DebugTurn.RecordOutcome(chatdebug.StatusCompleted)
 	watchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postCommitWatchPublishTimeout)
@@ -1076,6 +1086,7 @@ func (s *taskStarter) finishGenerationError(
 	)
 	lastError, message := generationLastError(cause)
 	var committed database.Chat
+	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForGeneration(ctx, store, input, fence); err != nil {
 			return xerrors.Errorf("load chat for generation: %w", err)
@@ -1088,15 +1099,16 @@ func (s *taskStarter) finishGenerationError(
 			return xerrors.Errorf("load committed chat: %w", err)
 		}
 		committed = chat
+		transitionApplied = true
 		return nil
 	})
+	if transitionApplied {
+		releaseAgentSlotOnTransition(ctx)
+	}
 	if err != nil {
 		err := normalizeTaskTransitionError(err, "finish generation error")
 		recordGenerationFinishFailure(input.DebugTurn, err)
 		return err
-	}
-	if lease, ok := agentSlotLeaseFromContext(ctx); ok {
-		lease.MarkTurnComplete()
 	}
 	input.DebugTurn.RecordOutcome(chatdebug.StatusError)
 	if err := s.publishWatchAndRoute(ctx, committed, codersdk.ChatWatchEventKindStatusChange); err != nil {
