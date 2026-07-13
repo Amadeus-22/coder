@@ -88,10 +88,7 @@ type ChatStatus string
 
 const (
 	ChatStatusWaiting        ChatStatus = "waiting"
-	ChatStatusPending        ChatStatus = "pending"
 	ChatStatusRunning        ChatStatus = "running"
-	ChatStatusPaused         ChatStatus = "paused"
-	ChatStatusCompleted      ChatStatus = "completed"
 	ChatStatusError          ChatStatus = "error"
 	ChatStatusRequiresAction ChatStatus = "requires_action"
 	ChatStatusInterrupting   ChatStatus = "interrupting"
@@ -913,16 +910,36 @@ type AdvisorConfig struct {
 // the request and response shapes are currently identical.
 type UpdateAdvisorConfigRequest = AdvisorConfig
 
+// ChatComputerUseProvider identifies the provider that backs computer use for
+// the virtual desktop.
+type ChatComputerUseProvider string
+
+const (
+	ChatComputerUseProviderAnthropic ChatComputerUseProvider = "anthropic"
+	ChatComputerUseProviderOpenAI    ChatComputerUseProvider = "openai"
+)
+
+// AllChatComputerUseProviders contains every ChatComputerUseProvider value.
+var AllChatComputerUseProviders = []ChatComputerUseProvider{
+	ChatComputerUseProviderAnthropic,
+	ChatComputerUseProviderOpenAI,
+}
+
+// Valid reports whether p is a supported computer use provider.
+func (p ChatComputerUseProvider) Valid() bool {
+	return slices.Contains(AllChatComputerUseProviders, p)
+}
+
 // ChatComputerUseProviderResponse is the response for getting the computer use
 // provider setting.
 type ChatComputerUseProviderResponse struct {
-	Provider string `json:"provider"`
+	Provider ChatComputerUseProvider `json:"provider"`
 }
 
 // UpdateChatComputerUseProviderRequest is the request to update the computer use
 // provider setting.
 type UpdateChatComputerUseProviderRequest struct {
-	Provider string `json:"provider"`
+	Provider ChatComputerUseProvider `json:"provider"`
 }
 
 // ChatDebugLoggingAdminSettings describes the runtime admin setting
