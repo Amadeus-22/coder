@@ -1069,15 +1069,13 @@ func TestListChats(t *testing.T) {
 
 			require.Equal(t, firstUser.UserID, chat.OwnerID)
 			require.Equal(t, modelConfig.ID, chat.LastModelConfigID)
-			// The chat may have been picked up by the background
-			// processor (via signalWake) before we list, so
-			// accept any active status.
+			// The chat may have been picked up by the chat worker
+			// before we list, so accept any status it may have
+			// reached by now.
 			require.Contains(t, []codersdk.ChatStatus{
-				codersdk.ChatStatusPending,
 				codersdk.ChatStatusRunning,
 				codersdk.ChatStatusError,
 				codersdk.ChatStatusWaiting,
-				codersdk.ChatStatusCompleted,
 			}, chat.Status, "unexpected chat status: %s", chat.Status)
 			require.NotZero(t, chat.CreatedAt)
 			require.NotZero(t, chat.UpdatedAt)
@@ -1100,9 +1098,8 @@ func TestListChats(t *testing.T) {
 		// The list is already verified as sorted by UpdatedAt
 		// descending (loop above). We intentionally do NOT
 		// compare positions using the creation-time UpdatedAt
-		// values because signalWake() may trigger background
-		// processing that mutates UpdatedAt between CreateChat
-		// and ListChats.
+		// values because the chat worker may pick up a chat and
+		// mutate UpdatedAt between CreateChat and ListChats.
 
 		memberChats, err := memberClient.ListChats(ctx, nil)
 		require.NoError(t, err)
@@ -1133,21 +1130,21 @@ func TestListChats(t *testing.T) {
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "owner created chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 		})
 		sharedChat := dbgen.Chat(t, db, database.Chat{
 			OrganizationID:    firstUser.OrganizationID,
 			OwnerID:           member.ID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "member shared chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 		})
 		unsharedReadableChat := dbgen.Chat(t, db, database.Chat{
 			OrganizationID:    firstUser.OrganizationID,
 			OwnerID:           firstUser.UserID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "unshared readable chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 		})
 
 		err := db.UpdateChatACLByID(dbauthz.As(ctx, rbac.Subject{
@@ -1268,7 +1265,7 @@ func TestListChats(t *testing.T) {
 				OwnerID:           firstUser.UserID,
 				LastModelConfigID: modelConfig.ID,
 				Title:             fmt.Sprintf("chat-%d", i),
-				Status:            database.ChatStatusCompleted,
+				Status:            database.ChatStatusWaiting,
 			})
 			createdChatIDs = append(createdChatIDs, dbChat.ID)
 		}
@@ -1351,7 +1348,7 @@ func TestListChats(t *testing.T) {
 			OwnerID:           firstUser.UserID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "pinned-chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 		})
 
 		// Fill page 1 with newer chats so the pinned chat
@@ -1364,7 +1361,7 @@ func TestListChats(t *testing.T) {
 				OwnerID:           firstUser.UserID,
 				LastModelConfigID: modelConfig.ID,
 				Title:             fmt.Sprintf("filler-%d", i),
-				Status:            database.ChatStatusCompleted,
+				Status:            database.ChatStatusWaiting,
 			})
 		}
 
@@ -1411,7 +1408,7 @@ func TestListChats(t *testing.T) {
 				OwnerID:           firstUser.UserID,
 				LastModelConfigID: modelConfig.ID,
 				Title:             fmt.Sprintf("cursor-pin-chat-%d", i),
-				Status:            database.ChatStatusCompleted,
+				Status:            database.ChatStatusWaiting,
 			})
 			createdChatIDs = append(createdChatIDs, dbChat.ID)
 		}
@@ -6552,7 +6549,7 @@ func TestChatPinOrder(t *testing.T) {
 			OwnerID:           firstUser.UserID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "child chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 			ParentChatID:      uuid.NullUUID{UUID: parentChat.ID, Valid: true},
 			RootChatID:        uuid.NullUUID{UUID: parentChat.ID, Valid: true},
 		})
@@ -8659,8 +8656,7 @@ func TestPatchChatMessage(t *testing.T) {
 			if getErr != nil {
 				return false
 			}
-			return c.Status != codersdk.ChatStatusPending &&
-				c.Status != codersdk.ChatStatusRunning
+			return c.Status != codersdk.ChatStatusRunning
 		}, testutil.IntervalFast, "initial chat processing did not finish")
 
 		messagesResult, err := client.GetChatMessages(ctx, chat.ID, nil)
@@ -8696,8 +8692,7 @@ func TestPatchChatMessage(t *testing.T) {
 			if getErr != nil {
 				return false
 			}
-			return c.Status != codersdk.ChatStatusPending &&
-				c.Status != codersdk.ChatStatusRunning
+			return c.Status != codersdk.ChatStatusRunning
 		}, testutil.IntervalFast, "post-edit chat processing did not finish")
 
 		updatedChat, err := client.GetChat(ctx, chat.ID)
@@ -8997,7 +8992,7 @@ func TestRegenerateChatTitle(t *testing.T) {
 
 		_, err = db.UpdateChatStatus(dbauthz.AsSystemRestricted(ctx), database.UpdateChatStatusParams{
 			ID:          chat.ID,
-			Status:      database.ChatStatusCompleted,
+			Status:      database.ChatStatusWaiting,
 			WorkerID:    uuid.NullUUID{},
 			StartedAt:   sql.NullTime{},
 			HeartbeatAt: sql.NullTime{},
@@ -9020,47 +9015,6 @@ func TestRegenerateChatTitle(t *testing.T) {
 		)
 	})
 
-	t.Run("PendingWithoutWorker", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := testutil.Context(t, testutil.WaitLong)
-		client, db := newChatClientWithDatabase(t)
-		user := coderdtest.CreateFirstUser(t, client.Client)
-		modelConfig := createTitleGenerationModelConfig(t, client)
-
-		chat := dbgen.Chat(t, db, database.Chat{
-			OrganizationID:    user.OrganizationID,
-			OwnerID:           user.UserID,
-			LastModelConfigID: modelConfig.ID,
-			Title:             "pending chat without worker",
-		})
-		seedManualTitleSourceMessage(t, db, chat, modelConfig.ID)
-
-		var err error
-		chat, err = db.UpdateChatStatus(dbauthz.AsSystemRestricted(ctx), database.UpdateChatStatusParams{
-			ID:          chat.ID,
-			Status:      database.ChatStatusPending,
-			WorkerID:    uuid.NullUUID{},
-			StartedAt:   sql.NullTime{},
-			HeartbeatAt: sql.NullTime{},
-			LastError:   pqtype.NullRawMessage{},
-		})
-		require.NoError(t, err)
-
-		// Pending chats are never acquired
-		// (GetChatWorkerAcquisitionCandidates excludes the status), so
-		// manual title regeneration must still proceed.
-		updated, err := client.RegenerateChatTitle(ctx, chat.ID)
-		require.NoError(t, err)
-		require.Equal(t, "Test Chat", updated.Title)
-
-		persisted, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
-		require.NoError(t, err)
-		require.Equal(t, "Test Chat", persisted.Title)
-		require.Equal(t, database.ChatStatusPending, persisted.Status)
-		require.False(t, persisted.WorkerID.Valid)
-	})
-
 	t.Run("PasteOnlyChat", func(t *testing.T) {
 		t.Parallel()
 
@@ -9074,7 +9028,7 @@ func TestRegenerateChatTitle(t *testing.T) {
 			OwnerID:           user.UserID,
 			LastModelConfigID: modelConfig.ID,
 			Title:             "New Chat",
-			Status:            database.ChatStatusCompleted,
+			Status:            database.ChatStatusWaiting,
 		})
 		// The chat's only user message is a synthetic pasted-text
 		// attachment with no text parts.
@@ -9083,6 +9037,43 @@ func TestRegenerateChatTitle(t *testing.T) {
 		updated, err := client.RegenerateChatTitle(ctx, chat.ID)
 		require.NoError(t, err)
 		require.Equal(t, "Test Chat", updated.Title)
+	})
+
+	t.Run("DoesNotBumpHistoryVersion", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		user := coderdtest.CreateFirstUser(t, client.Client)
+		modelConfig := createTitleGenerationModelConfig(t, client)
+
+		chat := dbgen.Chat(t, db, database.Chat{
+			OrganizationID:    user.OrganizationID,
+			OwnerID:           user.UserID,
+			LastModelConfigID: modelConfig.ID,
+			Title:             "history fence chat",
+		})
+		seedManualTitleSourceMessage(t, db, chat, modelConfig.ID)
+
+		// Leave history_version lagging snapshot_version, as when a
+		// generation task is in flight. A chat_messages write here would
+		// sync it and break that task's commit fence.
+		_, err := db.LockChatAndBumpSnapshotVersion(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+
+		before, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.NotEqual(t, before.SnapshotVersion, before.HistoryVersion,
+			"setup must leave history_version lagging snapshot_version")
+
+		updated, err := client.RegenerateChatTitle(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, "Test Chat", updated.Title)
+
+		after, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, before.HistoryVersion, after.HistoryVersion,
+			"manual title regeneration must not touch chat_messages")
 	})
 
 	t.Run("NoDefaultModelConfig", func(t *testing.T) {
@@ -9121,7 +9112,7 @@ func TestRegenerateChatTitle(t *testing.T) {
 
 		_, err = db.UpdateChatStatus(dbauthz.AsSystemRestricted(ctx), database.UpdateChatStatusParams{
 			ID:          chat.ID,
-			Status:      database.ChatStatusCompleted,
+			Status:      database.ChatStatusWaiting,
 			WorkerID:    uuid.NullUUID{},
 			StartedAt:   sql.NullTime{},
 			HeartbeatAt: sql.NullTime{},
@@ -9210,7 +9201,7 @@ func TestProposeChatTitle(t *testing.T) {
 		requireSDKError(t, err, http.StatusUnauthorized)
 	})
 
-	t.Run("PendingWithoutWorker", func(t *testing.T) {
+	t.Run("DoesNotBumpHistoryVersion", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := testutil.Context(t, testutil.WaitLong)
@@ -9222,38 +9213,27 @@ func TestProposeChatTitle(t *testing.T) {
 			OrganizationID:    user.OrganizationID,
 			OwnerID:           user.UserID,
 			LastModelConfigID: modelConfig.ID,
-			Title:             "pending chat without worker",
+			Title:             "history fence chat",
 		})
 		seedManualTitleSourceMessage(t, db, chat, modelConfig.ID)
 
-		var err error
-		chat, err = db.UpdateChatStatus(dbauthz.AsSystemRestricted(ctx), database.UpdateChatStatusParams{
-			ID:          chat.ID,
-			Status:      database.ChatStatusPending,
-			WorkerID:    uuid.NullUUID{},
-			StartedAt:   sql.NullTime{},
-			HeartbeatAt: sql.NullTime{},
-			LastError:   pqtype.NullRawMessage{},
-		})
+		// See the matching TestRegenerateChatTitle subtest.
+		_, err := db.LockChatAndBumpSnapshotVersion(dbauthz.AsSystemRestricted(ctx), chat.ID)
 		require.NoError(t, err)
 
 		before, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
 		require.NoError(t, err)
+		require.NotEqual(t, before.SnapshotVersion, before.HistoryVersion,
+			"setup must leave history_version lagging snapshot_version")
 
-		// Pending chats are never acquired
-		// (GetChatWorkerAcquisitionCandidates excludes the status), so
-		// title proposal must still proceed.
 		resp, err := client.ProposeChatTitle(ctx, chat.ID)
 		require.NoError(t, err)
 		require.Equal(t, "Test Chat", resp.Title)
 
-		persisted, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		after, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
 		require.NoError(t, err)
-		require.Equal(t, before.Title, persisted.Title,
-			"propose must not persist the suggested title")
-		require.Equal(t, database.ChatStatusPending, persisted.Status)
-		require.False(t, persisted.WorkerID.Valid)
-		require.True(t, persisted.UpdatedAt.Equal(before.UpdatedAt))
+		require.Equal(t, before.HistoryVersion, after.HistoryVersion,
+			"title proposal must not touch chat_messages")
 	})
 
 	t.Run("NoDefaultModelConfig", func(t *testing.T) {
@@ -9395,7 +9375,7 @@ func TestManualTitleEndpointsPassCallerAPIKeyToAIGateway(t *testing.T) {
 				OwnerID:           firstUser.UserID,
 				LastModelConfigID: modelConfig.ID,
 				Title:             "initial title",
-				Status:            database.ChatStatusCompleted,
+				Status:            database.ChatStatusWaiting,
 			})
 			content, err := chatprompt.MarshalParts([]codersdk.ChatMessagePart{
 				codersdk.ChatMessageText("manual title source"),
@@ -13227,7 +13207,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		resp, err := adminClient.GetChatComputerUseProvider(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "anthropic", resp.Provider)
+		require.Equal(t, codersdk.ChatComputerUseProviderAnthropic, resp.Provider)
 	})
 
 	t.Run("AdminCanSetAnthropic", func(t *testing.T) {
@@ -13244,7 +13224,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		resp, err := adminClient.GetChatComputerUseProvider(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "anthropic", resp.Provider)
+		require.Equal(t, codersdk.ChatComputerUseProviderAnthropic, resp.Provider)
 	})
 
 	t.Run("AdminCanSetOpenAI", func(t *testing.T) {
@@ -13261,7 +13241,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		resp, err := adminClient.GetChatComputerUseProvider(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "openai", resp.Provider)
+		require.Equal(t, codersdk.ChatComputerUseProviderOpenAI, resp.Provider)
 	})
 
 	t.Run("AdminCanSwitchProviders", func(t *testing.T) {
@@ -13283,7 +13263,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		resp, err := adminClient.GetChatComputerUseProvider(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "anthropic", resp.Provider)
+		require.Equal(t, codersdk.ChatComputerUseProviderAnthropic, resp.Provider)
 	})
 
 	t.Run("InvalidProviderRejected", func(t *testing.T) {
@@ -13295,7 +13275,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		for _, provider := range []string{"", "invalid"} {
 			err := adminClient.UpdateChatComputerUseProvider(ctx, codersdk.UpdateChatComputerUseProviderRequest{
-				Provider: provider,
+				Provider: codersdk.ChatComputerUseProvider(provider),
 			})
 			requireSDKError(t, err, http.StatusBadRequest)
 		}
@@ -13317,7 +13297,7 @@ func TestChatComputerUseProvider(t *testing.T) {
 
 		resp, err := memberClient.GetChatComputerUseProvider(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "openai", resp.Provider)
+		require.Equal(t, codersdk.ChatComputerUseProviderOpenAI, resp.Provider)
 	})
 
 	t.Run("NonAdminWriteFails", func(t *testing.T) {
