@@ -3931,6 +3931,10 @@ export interface CreateTemplateRequest {
 	 * CORSBehavior allows optionally specifying the CORS behavior for all shared ports.
 	 */
 	readonly cors_behavior: CORSBehavior | null;
+	/**
+	 * AgentsAllowed controls whether Coder Agents can use this template. It defaults to true.
+	 */
+	readonly agents_allowed?: boolean;
 }
 
 // From codersdk/templateversions.go
@@ -8456,6 +8460,7 @@ export interface Template {
 	readonly max_port_share_level: WorkspaceAgentPortShareLevel;
 	readonly cors_behavior: CORSBehavior;
 	readonly use_classic_parameter_flow: boolean;
+	readonly agents_allowed: boolean;
 	/**
 	 * DisableModuleCache disables the use of cached Terraform modules during
 	 * provisioning.
@@ -9431,6 +9436,7 @@ export interface UpdateTemplateMeta {
 	 * provisioning. It is recommended not to disable this.
 	 */
 	readonly disable_module_cache?: boolean;
+	readonly agents_allowed?: boolean;
 }
 
 // From codersdk/users.go

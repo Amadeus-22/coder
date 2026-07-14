@@ -11126,11 +11126,11 @@ func TestMCPServerOAuth2TokenRefreshFailureGraceful(t *testing.T) {
 		"original token should be preserved when refresh fails")
 }
 
-func TestChatTemplateAllowlistEnforcement(t *testing.T) {
+func TestChatTemplateAgentsAllowedEnforcement(t *testing.T) {
 	t.Parallel()
 
 	ctx := testutil.Context(t, testutil.WaitLong)
-	db, ps := dbtestutil.NewDB(t)
+	db, ps, sqlDB := dbtestutil.NewDBWithSQLDB(t)
 
 	// Declare templates before the handler so the closure can
 	// reference their IDs when building tool-call arguments.
@@ -11188,18 +11188,15 @@ func TestChatTemplateAllowlistEnforcement(t *testing.T) {
 		Name:           "blocked-template",
 	})
 
-	// Set the allowlist to only tplAllowed.
-	allowlistJSON, err := json.Marshal([]string{tplAllowed.ID.String()})
-	require.NoError(t, err)
-	err = db.UpsertChatTemplateAllowlist(dbauthz.AsSystemRestricted(ctx), string(allowlistJSON))
+	// Block tplBlocked for Coder Agents.
+	_, err := sqlDB.ExecContext(ctx, `UPDATE templates SET agents_allowed = false WHERE id = $1`, tplBlocked.ID)
 	require.NoError(t, err)
 
 	server := newActiveTestServer(t, db, ps, func(cfg *chatd.Config) {
 		cfg.AIBridgeTransportFactory = chatAIGatewayTransportFactoryPointer(chattest.NewMockAIBridgeTransport(t, openAIURL))
-		// Provide a CreateWorkspace function so the tool reaches
-		// the allowlist check instead of bailing with "not
-		// configured". If the allowlist is enforced correctly
-		// this function will never be called.
+		// Provide a CreateWorkspace function so the tool reaches the template
+		// access check instead of returning "not configured". The blocked
+		// template must be rejected before this function is called.
 		cfg.CreateWorkspace = func(
 			_ context.Context,
 			_ uuid.UUID,
@@ -11214,10 +11211,10 @@ func TestChatTemplateAllowlistEnforcement(t *testing.T) {
 		OrganizationID: org.ID,
 		OwnerID:        user.ID,
 		APIKeyID:       testAPIKeyID(t, db, user.ID),
-		Title:          "allowlist-test",
+		Title:          "template-access-test",
 		ModelConfigID:  model.ID,
 		InitialUserContent: []codersdk.ChatMessagePart{
-			codersdk.ChatMessageText("Test allowlist enforcement"),
+			codersdk.ChatMessageText("Test template access enforcement"),
 		},
 	})
 	require.NoError(t, err)
@@ -11274,15 +11271,15 @@ func TestChatTemplateAllowlistEnforcement(t *testing.T) {
 	require.Contains(t, toolResults["list_templates"][0], tplAllowed.ID.String(),
 		"allowed template should appear in list_templates result")
 	require.NotContains(t, toolResults["list_templates"][0], tplBlocked.ID.String(),
-		"blocked template should NOT appear in list_templates result")
+		"blocked template should not appear in list_templates result")
 
-	// read_template: blocked ID → error, allowed ID → success.
+	// read_template: the blocked row fails and the allowed row succeeds.
 	require.Contains(t, toolResults["read_template"][0], "not found",
 		"read_template for blocked template should return not-found error")
 	require.Contains(t, toolResults["read_template"][1], tplAllowed.ID.String(),
 		"read_template for allowed template should return template details")
 
-	// create_workspace: blocked ID → rejected.
+	// create_workspace: the blocked row is rejected.
 	require.Contains(t, toolResults["create_workspace"][0], "not available",
 		"create_workspace for blocked template should be rejected")
 }

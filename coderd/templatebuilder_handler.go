@@ -554,6 +554,7 @@ func (api *API) templateBuilderCreateTemplate(rw http.ResponseWriter, r *http.Re
 			MaxPortSharingLevel:          database.AppSharingLevelOwner,
 			UseClassicParameterFlow:      false,
 			CorsBehavior:                 database.CorsBehaviorSimple,
+			AgentsAllowed:                true,
 		})
 		if err != nil {
 			if database.IsUniqueViolation(err, database.UniqueTemplatesOrganizationIDNameIndex) {
