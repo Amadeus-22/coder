@@ -34,7 +34,6 @@ import (
 	"github.com/coder/coder/v2/coderd/provisionerdserver"
 	"github.com/coder/coder/v2/coderd/rbac"
 	"github.com/coder/coder/v2/coderd/rbac/policy"
-	"github.com/coder/coder/v2/coderd/rbac/regosql"
 	"github.com/coder/coder/v2/coderd/util/slice"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
 	"github.com/coder/coder/v2/codersdk"
@@ -926,7 +925,7 @@ func TestGetTemplatesWithAgentsAllowedFilter(t *testing.T) {
 		},
 		{
 			name:  "blocked",
-			value: sql.NullBool{Valid: true},
+			value: sql.NullBool{Bool: false, Valid: true},
 			want:  []uuid.UUID{blocked.ID},
 		},
 	}
@@ -960,23 +959,22 @@ func TestGetTemplatesWithAgentsAllowedFilter(t *testing.T) {
 		}
 	}
 
+	prepared, err := (&coderdtest.FakeAuthorizer{}).Prepare(
+		ctx,
+		rbac.Subject{},
+		policy.ActionRead,
+		rbac.ResourceTemplate.Type,
+	)
+	require.NoError(t, err)
 	authorized, err := db.GetAuthorizedTemplates(ctx, database.GetTemplatesWithFilterParams{
 		Deleted:        false,
 		OrganizationID: org.ID,
-		AgentsAllowed:  sql.NullBool{Valid: true},
-	}, allowAllPreparedAuthorized{})
+		AgentsAllowed:  sql.NullBool{Bool: false, Valid: true},
+	}, prepared)
 	require.NoError(t, err)
 	require.Len(t, authorized, 1)
 	require.Equal(t, blocked.ID, authorized[0].ID)
 	require.False(t, authorized[0].AgentsAllowed)
-}
-
-type allowAllPreparedAuthorized struct{}
-
-func (allowAllPreparedAuthorized) Authorize(context.Context, rbac.Object) error { return nil }
-
-func (allowAllPreparedAuthorized) CompileToSQL(context.Context, regosql.ConvertConfig) (string, error) {
-	return "true", nil
 }
 
 func TestGetWorkspaceAgentUsageStatsAndLabels(t *testing.T) {

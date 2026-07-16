@@ -1710,6 +1710,60 @@ func TestMigration000544TemplateAgentsAllowedBackfill(t *testing.T) {
 			},
 		},
 		{
+			name:    "invalid JSON",
+			value:   "{",
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
+			name:    "JSON object",
+			value:   `{}`,
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
+			name:    "JSON scalar",
+			value:   `"value"`,
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
+			name:    "invalid UUID element",
+			value:   `["not-a-uuid"]`,
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
+			name:    "null element",
+			value:   `[null]`,
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
+			name:    "mixed valid and invalid elements",
+			value:   fmt.Sprintf(`[%q,"not-a-uuid"]`, templateIDs[0]),
+			present: true,
+			want: map[uuid.UUID]bool{
+				templateIDs[0]: true,
+				templateIDs[1]: true,
+			},
+		},
+		{
 			name:    "empty array",
 			value:   "[]",
 			present: true,

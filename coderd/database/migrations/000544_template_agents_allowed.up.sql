@@ -5,6 +5,7 @@ COMMENT ON COLUMN templates.agents_allowed IS 'Whether Coder Agents can use this
 DO $$
 DECLARE
 	raw text;
+	parsed jsonb;
 	parsed_ids uuid[];
 BEGIN
 	SELECT value INTO raw
@@ -15,20 +16,31 @@ BEGIN
 		RETURN;
 	END IF;
 
-	IF jsonb_array_length(raw::jsonb) = 0 THEN
+	BEGIN
+		parsed := raw::jsonb;
+		IF jsonb_typeof(parsed) <> 'array' THEN
+			RAISE EXCEPTION 'agents_template_allowlist is not an array';
+		END IF;
+		IF jsonb_array_length(parsed) = 0 THEN
+			RETURN;
+		END IF;
+
+		SELECT array_agg(entry::uuid)
+		INTO parsed_ids
+		FROM jsonb_array_elements_text(parsed) AS entries(entry);
+
+		IF array_position(parsed_ids, NULL) IS NOT NULL THEN
+			RAISE EXCEPTION 'agents_template_allowlist contains a null template ID';
+		END IF;
+	EXCEPTION WHEN others THEN
+		RAISE WARNING 'agents_template_allowlist is corrupt (%); leaving all templates allowed', SQLERRM;
 		RETURN;
-	END IF;
+	END;
 
-	SELECT array_agg(entry::uuid)
-	INTO parsed_ids
-	FROM jsonb_array_elements_text(raw::jsonb) AS entries(entry);
-
-	IF array_position(parsed_ids, NULL) IS NOT NULL THEN
-		RAISE EXCEPTION 'agents_template_allowlist contains a null template ID';
-	END IF;
-
+	-- A valid nonempty list allows matching existing templates only. Missing,
+	-- empty, or corrupt data leaves templates allowed.
 	UPDATE templates
-	SET agents_allowed = id = ANY(parsed_ids);
+	SET agents_allowed = (id = ANY(parsed_ids));
 END $$;
 
 DROP VIEW template_with_names;

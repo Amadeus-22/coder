@@ -1,6 +1,3 @@
--- The deployment-wide allowlist is not restored. Migration 000545 removes it
--- after per-template settings become authoritative.
-
 DROP VIEW template_with_names;
 
 ALTER TABLE templates DROP COLUMN agents_allowed;
