@@ -63,7 +63,7 @@ func ReadTemplate(db database.Store, organizationID uuid.UUID, options ReadTempl
 				return fantasy.NewTextErrorResponse("template not found"), nil
 			}
 			if !template.AgentsAllowed {
-				return fantasy.NewTextErrorResponse("template not found"), nil
+				return fantasy.NewTextErrorResponse("template not available for chat workspaces; use list_templates to find allowed templates"), nil
 			}
 
 			params, err := db.GetTemplateVersionParameters(ctx, template.ActiveVersionID)

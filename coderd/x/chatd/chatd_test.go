@@ -11274,8 +11274,8 @@ func TestChatTemplateAgentsAllowedEnforcement(t *testing.T) {
 		"blocked template should not appear in list_templates result")
 
 	// read_template: the blocked row fails and the allowed row succeeds.
-	require.Contains(t, toolResults["read_template"][0], "not found",
-		"read_template for blocked template should return not-found error")
+	require.Contains(t, toolResults["read_template"][0], "not available",
+		"read_template for blocked template should return an actionable error")
 	require.Contains(t, toolResults["read_template"][1], tplAllowed.ID.String(),
 		"read_template for allowed template should return template details")
 

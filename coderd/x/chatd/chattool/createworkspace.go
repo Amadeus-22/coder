@@ -125,6 +125,27 @@ func CreateWorkspace(db database.Store, organizationID, chatID uuid.UUID, option
 
 			ownerID := options.OwnerID
 
+			// Check for an existing workspace on the chat.
+			check := options.checkExistingWorkspace(ctx, db, chatID)
+			if check.BuildErr != nil {
+				return buildFailureToolResponse(
+					ctx,
+					options.Logger,
+					db,
+					ownerID,
+					organizationID,
+					check.BuildAction,
+					check.BuildID,
+					check.BuildErr,
+				), nil
+			}
+			if check.Err != nil {
+				return fantasy.NewTextErrorResponse(check.Err.Error()), nil
+			}
+			if check.Done {
+				return toolResponse(check.Result), nil
+			}
+
 			// Set up dbauthz context for DB lookups.
 			ownerCtx, ownerErr := asOwner(ctx, db, ownerID)
 			if ownerErr != nil {
@@ -149,27 +170,6 @@ func CreateWorkspace(db database.Store, organizationID, chatID uuid.UUID, option
 			}
 			if !tmpl.AgentsAllowed {
 				return fantasy.NewTextErrorResponse("template not available for chat workspaces; use list_templates to find allowed templates"), nil
-			}
-
-			// Check for an existing workspace on the chat.
-			check := options.checkExistingWorkspace(ctx, db, chatID)
-			if check.BuildErr != nil {
-				return buildFailureToolResponse(
-					ctx,
-					options.Logger,
-					db,
-					ownerID,
-					organizationID,
-					check.BuildAction,
-					check.BuildID,
-					check.BuildErr,
-				), nil
-			}
-			if check.Err != nil {
-				return fantasy.NewTextErrorResponse(check.Err.Error()), nil
-			}
-			if check.Done {
-				return toolResponse(check.Result), nil
 			}
 
 			hasExternalAgent, externalAgentErr := templateHasExternalAgent(ctx, db, tmpl)

@@ -778,13 +778,14 @@ func TestTemplateAgentsAllowedEnforcement(t *testing.T) {
 			resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "c3", Name: "read_template", Input: input})
 			require.NoError(t, err)
 			require.True(t, resp.IsError)
-			require.Equal(t, "template not found", resp.Content)
+			require.Equal(t, "template not available for chat workspaces; use list_templates to find allowed templates", resp.Content)
 		})
 	})
 
+	model := seedModelConfig(t, db)
+
 	t.Run("CreateWorkspace", func(t *testing.T) {
 		t.Run("Allowed", func(t *testing.T) {
-			model := seedModelConfig(t, db)
 			chat, err := db.InsertChat(ctx, database.InsertChatParams{
 				OrganizationID:    org.ID,
 				OwnerID:           user.ID,
@@ -811,8 +812,18 @@ func TestTemplateAgentsAllowedEnforcement(t *testing.T) {
 		})
 
 		t.Run("Blocked", func(t *testing.T) {
+			chat, err := db.InsertChat(ctx, database.InsertChatParams{
+				OrganizationID:    org.ID,
+				OwnerID:           user.ID,
+				LastModelConfigID: model.ID,
+				Title:             "blocked-create",
+				Status:            database.ChatStatusWaiting,
+				ClientType:        database.ChatClientTypeApi,
+			})
+			require.NoError(t, err)
+
 			var createCalled bool
-			tool := chattool.CreateWorkspace(db, org.ID, uuid.New(), chattool.CreateWorkspaceOptions{
+			tool := chattool.CreateWorkspace(db, org.ID, chat.ID, chattool.CreateWorkspaceOptions{
 				OwnerID: user.ID,
 				CreateFn: func(_ context.Context, _ uuid.UUID, _ codersdk.CreateWorkspaceRequest) (codersdk.Workspace, error) {
 					createCalled = true

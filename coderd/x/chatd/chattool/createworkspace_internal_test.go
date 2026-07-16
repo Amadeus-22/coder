@@ -1117,6 +1117,68 @@ func TestCreateWorkspace_RejectsCrossOrgTemplate(t *testing.T) {
 	require.Contains(t, resp.Content, "organization")
 }
 
+func TestCreateWorkspace_ReturnsExistingWorkspaceBeforeTemplateValidation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	db := newCreateWorkspaceMockStore(ctrl)
+
+	chatID := uuid.New()
+	workspaceID := uuid.New()
+	jobID := uuid.New()
+	agentID := uuid.New()
+	now := time.Now().UTC()
+
+	expectExistingWorkspaceLookup(
+		db,
+		chatID,
+		workspaceID,
+		jobID,
+		"existing-workspace",
+		database.ProvisionerJobStatusSucceeded,
+		database.WorkspaceTransitionStart,
+	)
+	db.EXPECT().
+		GetWorkspaceAgentsInLatestBuildByWorkspaceID(gomock.Any(), workspaceID).
+		Return([]database.WorkspaceAgent{{
+			ID:               agentID,
+			Name:             "dev",
+			CreatedAt:        now.Add(-time.Minute),
+			FirstConnectedAt: validNullTime(now.Add(-45 * time.Second)),
+			LastConnectedAt:  validNullTime(now.Add(-5 * time.Second)),
+		}}, nil)
+	db.EXPECT().
+		GetWorkspaceAgentLifecycleStateByID(gomock.Any(), agentID).
+		Return(database.GetWorkspaceAgentLifecycleStateByIDRow{
+			LifecycleState: database.WorkspaceAgentLifecycleStateReady,
+		}, nil)
+
+	tool := CreateWorkspace(db, uuid.New(), chatID, CreateWorkspaceOptions{
+		OwnerID: uuid.New(),
+		CreateFn: func(context.Context, uuid.UUID, codersdk.CreateWorkspaceRequest) (codersdk.Workspace, error) {
+			t.Fatal("CreateFn should not be called when the chat already has a workspace")
+			return codersdk.Workspace{}, nil
+		},
+		WorkspaceMu:                    &sync.Mutex{},
+		AgentInactiveDisconnectTimeout: time.Minute,
+		Logger:                         slogtest.Make(t, &slogtest.Options{IgnoreErrors: true}),
+	})
+
+	input := fmt.Sprintf(`{"template_id":%q}`, uuid.New().String())
+	resp, err := tool.Run(context.Background(), fantasy.ToolCall{
+		ID:    "call-1",
+		Name:  "create_workspace",
+		Input: input,
+	})
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &result))
+	require.Equal(t, "already_exists", result["status"])
+	require.Equal(t, "existing-workspace", result["workspace_name"])
+}
+
 func TestCreateWorkspace_BlocksExternalTemplate(t *testing.T) {
 	t.Parallel()
 
