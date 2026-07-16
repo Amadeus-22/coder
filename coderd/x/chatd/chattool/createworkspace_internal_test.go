@@ -261,6 +261,7 @@ func TestCreateWorkspace_PrefersChatSuffixAgent(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -362,6 +363,7 @@ func TestCreateWorkspace_ReturnsSelectionErrorImmediately(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 	db.EXPECT().
 		GetChatWorkspaceTTL(gomock.Any()).
@@ -472,6 +474,7 @@ func TestCreateWorkspace_PostCreationBuildFailure(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -571,6 +574,7 @@ func TestCreateWorkspace_PostCreationQuotaFailure(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -811,6 +815,7 @@ func TestCreateWorkspace_ResponderErrorPreservesStructuredFields(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -988,6 +993,7 @@ func TestCreateWorkspace_GlobalTTL(t *testing.T) {
 				Return(database.Template{
 					ID:             templateID,
 					OrganizationID: orgID,
+					AgentsAllowed:  true,
 				}, nil)
 
 			db.EXPECT().
@@ -1091,6 +1097,7 @@ func TestCreateWorkspace_RejectsCrossOrgTemplate(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: templateOrgID,
+			AgentsAllowed:  true,
 			Name:           "wrong-org-template",
 		}, nil)
 
@@ -1207,6 +1214,7 @@ func TestCreateWorkspace_BlocksExternalTemplate(t *testing.T) {
 		Return(database.Template{
 			ID:              templateID,
 			OrganizationID:  orgID,
+			AgentsAllowed:   true,
 			ActiveVersionID: activeVersionID,
 		}, nil)
 	db.EXPECT().
@@ -1615,6 +1623,7 @@ func TestWaitForBuild_CanceledJob(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: orgID,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -1832,6 +1841,7 @@ func TestCreateWorkspace_OnChatUpdatedFiresAfterBuild(t *testing.T) {
 		Return(database.Template{
 			ID:             templateID,
 			OrganizationID: uuid.Nil,
+			AgentsAllowed:  true,
 		}, nil)
 
 	db.EXPECT().
@@ -1975,6 +1985,7 @@ func setupCreateWorkspacePresetTest(t *testing.T) createWorkspacePresetTestSetup
 		Return(database.Template{
 			ID:              s.TemplateID,
 			OrganizationID:  s.OrgID,
+			AgentsAllowed:   true,
 			Name:            "test-template",
 			ActiveVersionID: uuid.New(),
 		}, nil)
