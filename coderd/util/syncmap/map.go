@@ -47,8 +47,7 @@ func (m *Map[K, V]) LoadAndDelete(key K) (actual V, loaded bool) {
 func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	act, loaded := m.m.LoadOrStore(key, value)
 	if !loaded {
-		var empty V
-		return empty, loaded
+		return value, loaded
 	}
 	return act.(V), loaded
 }
