@@ -25,6 +25,7 @@ import {
 	getDefaultOrganizationName,
 	useDashboard,
 } from "#/modules/dashboard/useDashboard";
+import { useFeatureVisibility } from "#/modules/dashboard/useFeatureVisibility";
 import {
 	clampPercentage,
 	getSeverity,
@@ -51,9 +52,16 @@ type UsageSectionData = {
 const numberFormatter = new Intl.NumberFormat("en-US");
 
 export const UsageIndicator: FC = () => {
-	const { data: aiSpend, isError: isAISpendError } = useQuery(meAISpend());
 	const { user } = useAuthenticated();
-	const { organizations } = useDashboard();
+	const { organizations, experiments } = useDashboard();
+	// TODO(AIGOV-443): drop the experiment gate once cost control is stable.
+	const aiSpendAvailable =
+		Boolean(useFeatureVisibility().aibridge) &&
+		experiments.includes("ai-gateway-cost-control");
+	const { data: aiSpend, isError: isAISpendError } = useQuery({
+		...meAISpend(),
+		enabled: aiSpendAvailable,
+	});
 	const organizationName = getDefaultOrganizationName(organizations);
 	const username = user.username;
 	const { data: quota, isError: isQuotaError } = useQuery({
