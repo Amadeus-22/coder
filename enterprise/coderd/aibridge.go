@@ -1197,12 +1197,14 @@ func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
 		Client:      client,
 	})
 	if err != nil {
-		if dbauthz.IsNotAuthorizedError(err) {
-			httpapi.Forbidden(rw)
+		// The chat breakdown exposes chat titles and therefore requires
+		// chat read; callers without it (e.g. user admins) still get the
+		// totals and model breakdown.
+		if !dbauthz.IsNotAuthorizedError(err) {
+			httpapi.InternalServerError(rw, err)
 			return
 		}
-		httpapi.InternalServerError(rw, err)
-		return
+		byChat = nil
 	}
 
 	resp := codersdk.AIBridgeUserCostSummary{

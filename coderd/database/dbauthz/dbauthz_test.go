@@ -6836,7 +6836,9 @@ func (s *MethodTestSuite) TestAIBridge() {
 		row := testutil.Fake(s.T(), faker, database.GetAIBridgeUserCostByChatRow{})
 		db.EXPECT().GetUserByID(gomock.Any(), user.ID).Return(user, nil).AnyTimes()
 		db.EXPECT().GetAIBridgeUserCostByChat(gomock.Any(), arg).Return([]database.GetAIBridgeUserCostByChatRow{row}, nil).AnyTimes()
-		check.Args(arg).Asserts(user, policy.ActionRead).Returns([]database.GetAIBridgeUserCostByChatRow{row})
+		check.Args(arg).
+			Asserts(user, policy.ActionRead, rbac.ResourceChat.WithOwner(user.ID.String()).AnyOrganization(), policy.ActionRead).
+			Returns([]database.GetAIBridgeUserCostByChatRow{row})
 	}))
 
 	s.Run("GetAIBridgeTokenUsagesByInterceptionID", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {

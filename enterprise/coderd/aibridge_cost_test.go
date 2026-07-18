@@ -211,6 +211,33 @@ func TestUserAICostSummary(t *testing.T) {
 		require.Empty(t, got.ByChat)
 	})
 
+	t.Run("ChatBreakdownRequiresChatRead", func(t *testing.T) {
+		t.Parallel()
+		ownerClient, db, firstUser := coderdenttest.NewWithDatabase(t, aiCostOpts(t))
+		userAdminClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID, rbac.RoleUserAdmin())
+		ctx := testutil.Context(t, testutil.WaitLong)
+
+		now := dbtime.Now()
+		seedCostData(t, db, firstUser.OrganizationID, firstUser.UserID, now)
+
+		filter := codersdk.AIBridgeCostFilter{
+			StartDate: now.Add(-time.Hour),
+			EndDate:   now.Add(time.Hour),
+		}
+		// User admins can read users but not their chats: totals and the
+		// model breakdown are returned, chat titles are omitted.
+		got, err := userAdminClient.UserAICostSummary(ctx, firstUser.UserID, filter)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, got.RequestCount)
+		require.NotEmpty(t, got.ByModel)
+		require.Empty(t, got.ByChat)
+
+		//nolint:gocritic // Contrast case: owners hold chat read.
+		got, err = ownerClient.UserAICostSummary(ctx, firstUser.UserID, filter)
+		require.NoError(t, err)
+		require.NotEmpty(t, got.ByChat)
+	})
+
 	t.Run("RoleAccess", func(t *testing.T) {
 		t.Parallel()
 
