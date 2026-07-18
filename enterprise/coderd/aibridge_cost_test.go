@@ -308,6 +308,20 @@ func TestAIBridgeCostUsers(t *testing.T) {
 		require.EqualValues(t, 300, got.Users[0].TotalInputTokens)
 	})
 
+	t.Run("RejectsAfterID", func(t *testing.T) {
+		t.Parallel()
+		client, _ := coderdenttest.New(t, aiCostOpts(t))
+		ctx := testutil.Context(t, testutil.WaitLong)
+
+		//nolint:gocritic // Validation fires before RBAC.
+		_, err := client.AIBridgeCostUsers(ctx, codersdk.AIBridgeCostUsersFilter{
+			Pagination: codersdk.Pagination{AfterID: uuid.New()},
+		})
+		var sdkErr *codersdk.Error
+		require.ErrorAs(t, err, &sdkErr)
+		require.Equal(t, http.StatusBadRequest, sdkErr.StatusCode())
+	})
+
 	t.Run("SearchNoMatch", func(t *testing.T) {
 		t.Parallel()
 		client, db, firstUser := coderdenttest.NewWithDatabase(t, aiCostOpts(t))

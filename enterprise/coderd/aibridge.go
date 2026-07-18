@@ -1277,6 +1277,16 @@ func (api *API) aiBridgeCostUsers(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if page.AfterID != uuid.Nil {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Invalid query parameters.",
+			Validations: []codersdk.ValidationError{{
+				Field:  "after_id",
+				Detail: "Cursor pagination is not supported by this endpoint; use limit and offset.",
+			}},
+		})
+		return
+	}
 	if page.Limit <= 0 {
 		page.Limit = defaultCostUsersLimit
 	}
@@ -1288,7 +1298,6 @@ func (api *API) aiBridgeCostUsers(rw http.ResponseWriter, r *http.Request) {
 	// Pagination params are parsed by ParsePagination above.
 	qp.Del("limit")
 	qp.Del("offset")
-	qp.Del("after_id")
 	p := httpapi.NewQueryParamParser()
 	client := p.String(qp, "", "client")
 	search := p.String(qp, "", "search")
