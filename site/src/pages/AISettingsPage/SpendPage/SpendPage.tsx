@@ -3,22 +3,25 @@ import { type FC, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useSearchParams } from "react-router";
 import {
-	chatCostSummary,
+	paginatedAICostUsers,
+	userAICostSummary,
+} from "#/api/queries/aiBridge";
+import {
 	chatUsageLimitConfig,
 	deleteChatUsageLimitGroupOverride,
 	deleteChatUsageLimitOverride,
-	paginatedChatCostUsers,
 	updateChatUsageLimitConfig,
 	upsertChatUsageLimitGroupOverride,
 	upsertChatUsageLimitOverride,
 } from "#/api/queries/chats";
 import { groups } from "#/api/queries/groups";
 import { user } from "#/api/queries/users";
-import type { ChatCostUserRollup } from "#/api/typesGenerated";
+import type { AIBridgeCostUserRollup } from "#/api/typesGenerated";
 import type { DateRangeValue } from "#/components/DateRangePicker/DateRangePicker";
 import { useDebouncedValue } from "#/hooks/debounce";
 import { useAuthenticated } from "#/hooks/useAuthenticated";
 import { usePaginatedQuery } from "#/hooks/usePaginatedQuery";
+import { useDashboard } from "#/modules/dashboard/useDashboard";
 import { RequirePermission } from "#/modules/permissions/RequirePermission";
 import { SpendPageView } from "./SpendPageView";
 import { toExclusiveEndOfDayDateRange } from "./utils/dateRange";
@@ -147,13 +150,19 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 		);
 	};
 
+	const { entitlements } = useDashboard();
+	const isEntitled =
+		entitlements.features.aibridge.entitlement === "entitled" ||
+		entitlements.features.aibridge.entitlement === "grace_period";
+
 	const usersQuery = usePaginatedQuery({
-		...paginatedChatCostUsers({
+		...paginatedAICostUsers({
 			...dateRangeParams,
-			username: debouncedSearch,
+			search: debouncedSearch,
 		}),
 		recordsPerPage: USAGE_USERS_PAGE_SIZE,
 		preventScrollReset: true,
+		enabled: isEntitled,
 	});
 
 	const selectedUserId = searchParams.get("user") || null;
@@ -163,8 +172,8 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 	});
 
 	const summaryQuery = useQuery({
-		...chatCostSummary(selectedUserId ?? "me", dateRangeParams),
-		enabled: selectedUserId !== null,
+		...userAICostSummary(selectedUserId ?? "me", dateRangeParams),
+		enabled: selectedUserId !== null && isEntitled,
 	});
 
 	return (
@@ -220,6 +229,7 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 				onDateRangeChange={onDateRangeChange}
 				searchFilter={searchFilter}
 				onSearchFilterChange={setSearchFilter}
+				isUsageEntitled={isEntitled}
 				usersQuery={usersQuery}
 				drillInUserId={selectedUserId}
 				drillInUser={selectedUserQuery.data ?? null}
@@ -234,7 +244,7 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 						return next;
 					});
 				}}
-				onSelectUser={(u: ChatCostUserRollup) => {
+				onSelectUser={(u: AIBridgeCostUserRollup) => {
 					setSearchParams((prev) => {
 						const next = new URLSearchParams(prev);
 						next.set("user", u.user_id);

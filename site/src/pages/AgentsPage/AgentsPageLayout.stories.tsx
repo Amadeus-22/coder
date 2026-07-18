@@ -65,65 +65,41 @@ const defaultModelConfigs: TypesGen.ChatModelConfig[] = [
 	},
 ];
 
-const mockAnalyticsSummary: TypesGen.ChatCostSummary = {
+const mockAnalyticsSummary: TypesGen.AIBridgeUserCostSummary = {
 	start_date: "2026-02-10T00:00:00Z",
 	end_date: "2026-03-12T00:00:00Z",
 	total_cost_micros: 1_500_000,
-	priced_message_count: 12,
-	unpriced_message_count: 1,
+	request_count: 13,
+	priced_request_count: 12,
+	unpriced_request_count: 1,
 	total_input_tokens: 123_456,
 	total_output_tokens: 654_321,
 	total_cache_read_tokens: 9_876,
-	total_cache_creation_tokens: 5_432,
-	total_runtime_ms: 0,
+	total_cache_write_tokens: 5_432,
 	by_model: [
 		{
-			model_config_id: defaultModelConfigID,
-			display_name: "GPT-4.1",
-			provider: "OpenAI",
+			provider: "openai",
 			model: "gpt-4.1",
 			total_cost_micros: 1_250_000,
-			message_count: 9,
+			request_count: 9,
+			unpriced_request_count: 1,
 			total_input_tokens: 100_000,
 			total_output_tokens: 200_000,
 			total_cache_read_tokens: 7_654,
-			total_cache_creation_tokens: 3_210,
-			total_runtime_ms: 0,
+			total_cache_write_tokens: 3_210,
 		},
 	],
 	by_chat: [
 		{
-			root_chat_id: "chat-1",
+			chat_id: "chat-1",
 			chat_title: "Quarterly review",
 			total_cost_micros: 750_000,
-			message_count: 5,
+			request_count: 5,
+			unpriced_request_count: 0,
 			total_input_tokens: 60_000,
 			total_output_tokens: 80_000,
 			total_cache_read_tokens: 4_321,
-			total_cache_creation_tokens: 1_234,
-			total_runtime_ms: 0,
-		},
-	],
-};
-
-const mockUsageUsers: TypesGen.ChatCostUsersResponse = {
-	start_date: "2026-02-10T00:00:00Z",
-	end_date: "2026-03-12T00:00:00Z",
-	count: 1,
-	users: [
-		{
-			user_id: "user-1",
-			username: "alice",
-			name: "Alice Example",
-			avatar_url: "https://example.com/alice.png",
-			total_cost_micros: 1_200_000,
-			message_count: 12,
-			chat_count: 3,
-			total_input_tokens: 120_000,
-			total_output_tokens: 45_000,
-			total_cache_read_tokens: 6_789,
-			total_cache_creation_tokens: 2_468,
-			total_runtime_ms: 0,
+			total_cache_write_tokens: 1_234,
 		},
 	],
 };
@@ -331,6 +307,7 @@ const meta: Meta<typeof AgentsPageLayout> = {
 	component: AgentsPageLayout,
 	decorators: [withAuthProvider, withDashboardProvider, withWebSocket],
 	parameters: {
+		features: ["aibridge"],
 		layout: "fullscreen",
 		// The layout opens a chat-watch WebSocket on mount. An empty
 		// event list gives an inert socket that never emits.
@@ -390,12 +367,7 @@ const meta: Meta<typeof AgentsPageLayout> = {
 			workspaces: [],
 			count: 0,
 		});
-		spyOn(API.experimental, "getChatCostSummary").mockResolvedValue(
-			mockAnalyticsSummary,
-		);
-		spyOn(API.experimental, "getChatCostUsers").mockResolvedValue(
-			mockUsageUsers,
-		);
+		spyOn(API, "getUserAICostSummary").mockResolvedValue(mockAnalyticsSummary);
 		spyOn(API.experimental, "getChatSystemPrompt").mockResolvedValue({
 			system_prompt: "",
 			include_default_system_prompt: true,
@@ -509,9 +481,7 @@ const meta: Meta<typeof AgentsPageLayout> = {
 			group_overrides: [],
 		});
 		spyOn(API, "getGroups").mockResolvedValue([]);
-		spyOn(API.experimental, "getChatCostUsers").mockResolvedValue({
-			start_date: "2026-02-10T00:00:00Z",
-			end_date: "2026-03-12T00:00:00Z",
+		spyOn(API, "getAIBridgeCostUsers").mockResolvedValue({
 			count: 0,
 			users: [],
 		});
@@ -1099,6 +1069,26 @@ export const OpensAnalyticsForNonAdmins: Story = {
 					"Review your personal Coder Agents usage and cost breakdowns.",
 				),
 			).toBeInTheDocument();
+		});
+	},
+};
+
+export const OpensAnalyticsWithoutLicense: Story = {
+	args: {
+		isAgentsAdmin: false,
+	},
+	parameters: {
+		features: [],
+		permissions: MockNoPermissions,
+		reactRouter: reactRouterParameters({
+			location: { path: "/agents/analytics" },
+			routing: [agentsRouting, aiSettingsRouting],
+		}),
+	},
+	play: async () => {
+		await waitFor(() => {
+			expect(screen.getByText("AI Gateway")).toBeInTheDocument();
+			expect(screen.getByText("Contact Sales")).toBeInTheDocument();
 		});
 	},
 };

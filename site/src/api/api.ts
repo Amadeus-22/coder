@@ -392,6 +392,18 @@ type SearchParamOptions = TypesGen.Pagination & {
 	q?: string;
 };
 
+type AIBridgeCostFilter = {
+	start_date?: string;
+	end_date?: string;
+	client?: string;
+};
+
+type AIBridgeCostUsersFilter = AIBridgeCostFilter & {
+	search?: string;
+	limit?: number;
+	offset?: number;
+};
+
 type RestartWorkspaceParameters = Readonly<{
 	workspace: TypesGen.Workspace;
 	buildParameters?: TypesGen.WorkspaceBuildParameter[];
@@ -3260,6 +3272,28 @@ class ApiMethods {
 		const url = getURLWithSearchParams(`${aiGatewayPath}/sessions`, options);
 		const response =
 			await this.axios.get<TypesGen.AIBridgeListSessionsResponse>(url);
+		return response.data;
+	};
+
+	getUserAICostSummary = async (
+		user: string,
+		filter?: AIBridgeCostFilter,
+	): Promise<TypesGen.AIBridgeUserCostSummary> => {
+		const url = getURLWithSearchParams(
+			`/api/v2/users/${encodeURIComponent(user)}/ai/cost-summary`,
+			filter,
+		);
+		const response =
+			await this.axios.get<TypesGen.AIBridgeUserCostSummary>(url);
+		return response.data;
+	};
+
+	getAIBridgeCostUsers = async (
+		filter?: AIBridgeCostUsersFilter,
+	): Promise<TypesGen.AIBridgeCostUsersResponse> => {
+		const url = getURLWithSearchParams(`${aiGatewayPath}/cost/users`, filter);
+		const response =
+			await this.axios.get<TypesGen.AIBridgeCostUsersResponse>(url);
 		return response.data;
 	};
 

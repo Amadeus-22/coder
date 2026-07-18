@@ -52,14 +52,14 @@ interface UsageTabProps {
 	searchFilter: string;
 	onSearchFilterChange: (value: string) => void;
 	usersQuery: PaginationResult & {
-		data: TypesGen.ChatCostUsersResponse | undefined;
+		data: TypesGen.AIBridgeCostUsersResponse | undefined;
 		isLoading: boolean;
 		isFetching: boolean;
 		error: unknown;
 		refetch: () => unknown;
 	};
 	overrides: readonly UsageUserOverride[];
-	onSelectUser: (user: TypesGen.ChatCostUserRollup) => void;
+	onSelectUser: (user: TypesGen.AIBridgeCostUserRollup) => void;
 	onEditBudget: (override: UsageUserOverride) => void;
 }
 
@@ -140,8 +140,8 @@ export const UsageTab: FC<UsageTabProps> = ({
 										<TableRow>
 											<TableHead>User</TableHead>
 											<TableHead className="text-right">Cost</TableHead>
-											<TableHead className="text-right">Messages</TableHead>
-											<TableHead className="text-right">Chats</TableHead>
+											<TableHead className="text-right">Requests</TableHead>
+											<TableHead className="text-right">Sessions</TableHead>
 											<TableHead className="text-right">Input</TableHead>
 											<TableHead className="text-right">Output</TableHead>
 											<TableHead className="text-right">Cache Read</TableHead>
@@ -181,9 +181,9 @@ export const UsageTab: FC<UsageTabProps> = ({
 };
 
 const UserRow: FC<{
-	user: TypesGen.ChatCostUserRollup;
-	onSelect: (user: TypesGen.ChatCostUserRollup) => void;
-	onEditBudget: (user: TypesGen.ChatCostUserRollup) => void;
+	user: TypesGen.AIBridgeCostUserRollup;
+	onSelect: (user: TypesGen.AIBridgeCostUserRollup) => void;
+	onEditBudget: (user: TypesGen.AIBridgeCostUserRollup) => void;
 }> = ({ user, onSelect, onEditBudget }) => {
 	const clickableRowProps = useClickableTableRow({
 		onClick: () => onSelect(user),
@@ -220,10 +220,10 @@ const UserRow: FC<{
 				{formatCostMicros(user.total_cost_micros)}
 			</TableCell>
 			<TableCell className="text-right tabular-nums">
-				{user.message_count.toLocaleString()}
+				{user.request_count.toLocaleString("en-US")}
 			</TableCell>
 			<TableCell className="text-right tabular-nums">
-				{user.chat_count.toLocaleString()}
+				{user.session_count.toLocaleString("en-US")}
 			</TableCell>
 			<TableCell className="text-right tabular-nums">
 				{formatTokenCount(user.total_input_tokens)}
@@ -235,7 +235,7 @@ const UserRow: FC<{
 				{formatTokenCount(user.total_cache_read_tokens)}
 			</TableCell>
 			<TableCell className="text-right tabular-nums">
-				{formatTokenCount(user.total_cache_creation_tokens)}
+				{formatTokenCount(user.total_cache_write_tokens)}
 			</TableCell>
 			<TableCell className="w-1" onClick={(event) => event.stopPropagation()}>
 				<DropdownMenu>

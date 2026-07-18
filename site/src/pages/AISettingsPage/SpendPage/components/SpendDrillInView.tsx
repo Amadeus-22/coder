@@ -9,8 +9,8 @@ import {
 	type DateRangeValue,
 } from "#/components/DateRangePicker/DateRangePicker";
 import { Spinner } from "#/components/Spinner/Spinner";
+import { AICostSummaryView } from "./AICostSummaryView";
 import { BackButton } from "./BackButton";
-import { ChatCostSummaryView } from "./ChatCostSummaryView";
 import { SpendSectionHeader } from "./SpendSectionHeader";
 
 interface SpendDrillInViewProps {
@@ -23,7 +23,7 @@ interface SpendDrillInViewProps {
 	displayDateRange: DateRangeValue;
 	onDateRangeChange: (value: DateRangeValue) => void;
 	dateRangeLabel: string;
-	summaryData: TypesGen.ChatCostSummary | undefined;
+	summaryData: TypesGen.AIBridgeUserCostSummary | undefined;
 	isSummaryLoading: boolean;
 	summaryError: unknown;
 	onSummaryRetry: () => void;
@@ -114,7 +114,7 @@ export const SpendDrillInView: FC<SpendDrillInViewProps> = ({
 					<div>{dateRangeLabel}</div>
 				</div>
 			</div>
-			<ChatCostSummaryView
+			<AICostSummaryView
 				key={selectedUser.id}
 				summary={summaryData}
 				isLoading={isSummaryLoading}

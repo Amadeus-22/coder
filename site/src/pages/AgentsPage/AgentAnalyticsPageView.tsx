@@ -1,11 +1,13 @@
 import { BarChart3Icon } from "lucide-react";
 import type { FC } from "react";
-import type { ChatCostSummary } from "#/api/typesGenerated";
-import { ChatCostSummaryView } from "#/pages/AISettingsPage/SpendPage/components/ChatCostSummaryView";
+import type { AIBridgeUserCostSummary } from "#/api/typesGenerated";
+import { PaywallAIGovernance } from "#/components/Paywall/PaywallAIGovernance";
+import { AICostSummaryView } from "#/pages/AISettingsPage/SpendPage/components/AICostSummaryView";
 import { SectionHeader } from "./components/SectionHeader";
 
 interface AgentAnalyticsPageViewProps {
-	summary: ChatCostSummary | undefined;
+	isEntitled: boolean;
+	summary: AIBridgeUserCostSummary | undefined;
 	isLoading: boolean;
 	error: unknown;
 	onRetry: () => void;
@@ -13,6 +15,7 @@ interface AgentAnalyticsPageViewProps {
 }
 
 export const AgentAnalyticsPageView: FC<AgentAnalyticsPageViewProps> = ({
+	isEntitled,
 	summary,
 	isLoading,
 	error,
@@ -33,14 +36,18 @@ export const AgentAnalyticsPageView: FC<AgentAnalyticsPageViewProps> = ({
 					}
 				/>
 
-				<ChatCostSummaryView
-					summary={summary}
-					isLoading={isLoading}
-					error={error}
-					onRetry={onRetry}
-					loadingLabel="Loading analytics"
-					emptyMessage="No usage data for you in this period."
-				/>
+				{isEntitled ? (
+					<AICostSummaryView
+						summary={summary}
+						isLoading={isLoading}
+						error={error}
+						onRetry={onRetry}
+						loadingLabel="Loading analytics"
+						emptyMessage="No usage data for you in this period."
+					/>
+				) : (
+					<PaywallAIGovernance />
+				)}
 			</div>
 		</div>
 	);

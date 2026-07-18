@@ -2,9 +2,10 @@ import dayjs, { type Dayjs } from "dayjs";
 import { type FC, useState } from "react";
 import { useQuery } from "react-query";
 import { useLocation } from "react-router";
-import { chatCostSummary } from "#/api/queries/chats";
+import { userAICostSummary } from "#/api/queries/aiBridge";
 import { ScrollArea } from "#/components/ScrollArea/ScrollArea";
 import { useAuthContext } from "#/contexts/auth/AuthProvider";
+import { useDashboard } from "#/modules/dashboard/useDashboard";
 import { AgentAnalyticsPageView } from "./AgentAnalyticsPageView";
 import { AgentPageHeader } from "./components/AgentPageHeader";
 
@@ -25,16 +26,20 @@ interface AgentAnalyticsPageProps {
 
 const AgentAnalyticsPage: FC<AgentAnalyticsPageProps> = ({ now }) => {
 	const { user } = useAuthContext();
+	const { entitlements } = useDashboard();
 	const location = useLocation();
 	const [anchor] = useState<Dayjs>(() => dayjs());
 	const dateRange = createDateRange(now ?? anchor);
+	const isEntitled =
+		entitlements.features.aibridge.entitlement === "entitled" ||
+		entitlements.features.aibridge.entitlement === "grace_period";
 
 	const summaryQuery = useQuery({
-		...chatCostSummary(user?.id ?? "me", {
+		...userAICostSummary(user?.id ?? "me", {
 			start_date: dateRange.startDate,
 			end_date: dateRange.endDate,
 		}),
-		enabled: Boolean(user?.id),
+		enabled: Boolean(user?.id) && isEntitled,
 	});
 
 	return (
@@ -46,6 +51,7 @@ const AgentAnalyticsPage: FC<AgentAnalyticsPageProps> = ({ now }) => {
 				}}
 			/>
 			<AgentAnalyticsPageView
+				isEntitled={isEntitled}
 				summary={summaryQuery.data}
 				isLoading={summaryQuery.isLoading}
 				error={summaryQuery.error}

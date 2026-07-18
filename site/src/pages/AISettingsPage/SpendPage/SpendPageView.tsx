@@ -5,6 +5,7 @@ import { ErrorAlert } from "#/components/Alert/ErrorAlert";
 import { Button } from "#/components/Button/Button";
 import type { DateRangeValue } from "#/components/DateRangePicker/DateRangePicker";
 import type { PaginationResult } from "#/components/PaginationWidget/PaginationContainer";
+import { PaywallAIGovernance } from "#/components/Paywall/PaywallAIGovernance";
 import {
 	SettingsHeader,
 	SettingsHeaderDescription,
@@ -77,8 +78,9 @@ interface SpendPageViewProps {
 	onDateRangeChange: (value: DateRangeValue) => void;
 	searchFilter: string;
 	onSearchFilterChange: (value: string) => void;
+	isUsageEntitled: boolean;
 	usersQuery: PaginationResult & {
-		data: TypesGen.ChatCostUsersResponse | undefined;
+		data: TypesGen.AIBridgeCostUsersResponse | undefined;
 		isLoading: boolean;
 		isFetching: boolean;
 		error: unknown;
@@ -91,8 +93,8 @@ interface SpendPageViewProps {
 	drillInUserError: unknown;
 	onDrillInUserRetry: () => void;
 	onClearSelectedUser: () => void;
-	onSelectUser: (user: TypesGen.ChatCostUserRollup) => void;
-	summaryData: TypesGen.ChatCostSummary | undefined;
+	onSelectUser: (user: TypesGen.AIBridgeCostUserRollup) => void;
+	summaryData: TypesGen.AIBridgeUserCostSummary | undefined;
 	isSummaryLoading: boolean;
 	summaryError: unknown;
 	onSummaryRetry: () => void;
@@ -129,6 +131,7 @@ export const SpendPageView: FC<SpendPageViewProps> = ({
 	onDateRangeChange,
 	searchFilter,
 	onSearchFilterChange,
+	isUsageEntitled,
 	usersQuery,
 	drillInUserId,
 	drillInUser,
@@ -199,7 +202,7 @@ export const SpendPageView: FC<SpendPageViewProps> = ({
 		}, {}) ?? {};
 	const { isSavedVisible, showSavedState } = useTemporarySavedState();
 
-	if (drillInUserId) {
+	if (drillInUserId && isUsageEntitled) {
 		return (
 			<SpendDrillInView
 				selectedUser={drillInUser}
@@ -417,19 +420,23 @@ export const SpendPageView: FC<SpendPageViewProps> = ({
 								</TabsContent>
 
 								<TabsContent value="usage" className="pt-8">
-									<UsageTab
-										displayDateRange={displayDateRange}
-										onDateRangeChange={onDateRangeChange}
-										searchFilter={searchFilter}
-										onSearchFilterChange={onSearchFilterChange}
-										usersQuery={usersQuery}
-										overrides={overrides}
-										onSelectUser={onSelectUser}
-										onEditBudget={(override) => {
-											groupCtrl.handleShowGroupFormChange(false);
-											userCtrl.handleEditUserOverride(override);
-										}}
-									/>
+									{!isUsageEntitled ? (
+										<PaywallAIGovernance />
+									) : (
+										<UsageTab
+											displayDateRange={displayDateRange}
+											onDateRangeChange={onDateRangeChange}
+											searchFilter={searchFilter}
+											onSearchFilterChange={onSearchFilterChange}
+											usersQuery={usersQuery}
+											overrides={overrides}
+											onSelectUser={onSelectUser}
+											onEditBudget={(override) => {
+												groupCtrl.handleShowGroupFormChange(false);
+												userCtrl.handleEditUserOverride(override);
+											}}
+										/>
+									)}
 								</TabsContent>
 							</Tabs>
 						</div>

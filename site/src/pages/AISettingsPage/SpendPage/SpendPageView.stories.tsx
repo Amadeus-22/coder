@@ -5,20 +5,20 @@ import type * as TypesGen from "#/api/typesGenerated";
 import type { PaginationResult } from "#/components/PaginationWidget/PaginationContainer";
 import { SpendPageView } from "./SpendPageView";
 
-const mockUsers: TypesGen.ChatCostUserRollup[] = [
+const mockUsers: TypesGen.AIBridgeCostUserRollup[] = [
 	{
 		user_id: "user-1",
 		username: "alice",
 		name: "Alice Liddell",
 		avatar_url: "",
 		total_cost_micros: 2_500_000,
-		message_count: 42,
-		chat_count: 5,
+		request_count: 42,
+		unpriced_request_count: 2,
+		session_count: 5,
 		total_input_tokens: 200_000,
 		total_output_tokens: 300_000,
 		total_cache_read_tokens: 10_000,
-		total_cache_creation_tokens: 5_000,
-		total_runtime_ms: 0,
+		total_cache_write_tokens: 5_000,
 	},
 	{
 		user_id: "user-2",
@@ -26,19 +26,17 @@ const mockUsers: TypesGen.ChatCostUserRollup[] = [
 		name: "Bob Builder",
 		avatar_url: "",
 		total_cost_micros: 1_000_000,
-		message_count: 18,
-		chat_count: 3,
+		request_count: 18,
+		unpriced_request_count: 0,
+		session_count: 3,
 		total_input_tokens: 80_000,
 		total_output_tokens: 120_000,
 		total_cache_read_tokens: 4_000,
-		total_cache_creation_tokens: 2_000,
-		total_runtime_ms: 0,
+		total_cache_write_tokens: 2_000,
 	},
 ];
 
-const mockUsersResponse: TypesGen.ChatCostUsersResponse = {
-	start_date: "2026-02-10T00:00:00Z",
-	end_date: "2026-03-12T00:00:00Z",
+const mockUsersResponse: TypesGen.AIBridgeCostUsersResponse = {
 	count: mockUsers.length,
 	users: mockUsers,
 };
@@ -59,46 +57,44 @@ const mockUserProfile = {
 	has_ai_seat: false,
 } as TypesGen.User;
 
-const mockCostSummary = {
+const mockCostSummary: TypesGen.AIBridgeUserCostSummary = {
 	start_date: "2026-02-10T00:00:00Z",
 	end_date: "2026-03-12T00:00:00Z",
 	total_cost_micros: 2_500_000,
-	priced_message_count: 40,
-	unpriced_message_count: 2,
+	request_count: 42,
+	priced_request_count: 40,
+	unpriced_request_count: 2,
 	total_input_tokens: 200_000,
 	total_output_tokens: 300_000,
 	total_cache_read_tokens: 10_000,
-	total_cache_creation_tokens: 5_000,
-	total_runtime_ms: 0,
+	total_cache_write_tokens: 5_000,
 	by_model: [
 		{
-			model_config_id: "model-1",
-			display_name: "GPT-4.1",
-			provider: "OpenAI",
+			provider: "openai",
 			model: "gpt-4.1",
 			total_cost_micros: 2_000_000,
-			message_count: 30,
+			request_count: 30,
+			unpriced_request_count: 1,
 			total_input_tokens: 150_000,
 			total_output_tokens: 250_000,
 			total_cache_read_tokens: 8_000,
-			total_cache_creation_tokens: 4_000,
-			total_runtime_ms: 0,
+			total_cache_write_tokens: 4_000,
 		},
 	],
 	by_chat: [
 		{
-			root_chat_id: "chat-1",
+			chat_id: "chat-1",
 			chat_title: "Refactor auth module",
 			total_cost_micros: 1_200_000,
-			message_count: 15,
+			request_count: 15,
+			unpriced_request_count: 1,
 			total_input_tokens: 80_000,
 			total_output_tokens: 120_000,
 			total_cache_read_tokens: 3_000,
-			total_cache_creation_tokens: 1_500,
-			total_runtime_ms: 0,
+			total_cache_write_tokens: 1_500,
 		},
 	],
-} as TypesGen.ChatCostSummary;
+};
 
 const mockConfigData = {
 	spend_limit_micros: 50_000_000,
@@ -169,13 +165,13 @@ const defaultDateRange = {
 
 function mockUsersQuery(
 	opts: {
-		data?: TypesGen.ChatCostUsersResponse;
+		data?: TypesGen.AIBridgeCostUsersResponse;
 		isLoading?: boolean;
 		isFetching?: boolean;
 		error?: unknown;
 	} = {},
 ): PaginationResult & {
-	data: TypesGen.ChatCostUsersResponse | undefined;
+	data: TypesGen.AIBridgeCostUsersResponse | undefined;
 	isLoading: boolean;
 	isFetching: boolean;
 	error: unknown;
@@ -219,6 +215,7 @@ function mockUsersQuery(
 }
 
 const baseProps = {
+	isUsageEntitled: true,
 	configData: undefined as TypesGen.ChatUsageLimitConfigResponse | undefined,
 	isLoadingConfig: false,
 	configError: null as Error | null,
@@ -244,7 +241,7 @@ const baseProps = {
 	isDrillInUserLoading: false,
 	isDrillInUserError: false,
 	drillInUserError: undefined as unknown,
-	summaryData: undefined as TypesGen.ChatCostSummary | undefined,
+	summaryData: undefined as TypesGen.AIBridgeUserCostSummary | undefined,
 	isSummaryLoading: false,
 	summaryError: undefined as unknown,
 };
@@ -323,8 +320,6 @@ export const SpendUsersEmpty: Story = {
 		groupsData: mockGroups,
 		usersQuery: mockUsersQuery({
 			data: {
-				start_date: "2026-02-10T00:00:00Z",
-				end_date: "2026-03-12T00:00:00Z",
 				count: 0,
 				users: [],
 			},
@@ -517,5 +512,22 @@ export const SpendUserClickToDrillIn: Story = {
 		expect(args.onSelectUser).toHaveBeenCalledWith(
 			expect.objectContaining({ user_id: "user-1" }),
 		);
+	},
+};
+
+export const SpendUsageUnlicensed: Story = {
+	args: {
+		configData: mockConfigData,
+		groupsData: mockGroups,
+		isUsageEntitled: false,
+		usersQuery: mockUsersQuery({ data: undefined }),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+
+		await userEvent.click(canvas.getByRole("tab", { name: "Usage" }));
+
+		await canvas.findByRole("heading", { name: "AI Gateway" });
+		expect(canvas.queryByText("Usage by user")).not.toBeInTheDocument();
 	},
 };
