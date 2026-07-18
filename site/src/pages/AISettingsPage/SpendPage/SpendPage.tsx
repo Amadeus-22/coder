@@ -150,10 +150,12 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 		);
 	};
 
-	const { entitlements } = useDashboard();
+	const { entitlements, experiments } = useDashboard();
+	// TODO(AIGOV-443): drop the experiment gate once cost control is stable.
 	const isEntitled =
-		entitlements.features.aibridge.entitlement === "entitled" ||
-		entitlements.features.aibridge.entitlement === "grace_period";
+		(entitlements.features.aibridge.entitlement === "entitled" ||
+			entitlements.features.aibridge.entitlement === "grace_period") &&
+		experiments.includes("ai-gateway-cost-control");
 
 	const usersQuery = usePaginatedQuery({
 		...paginatedAICostUsers({

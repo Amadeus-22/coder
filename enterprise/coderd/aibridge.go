@@ -1319,6 +1319,24 @@ func (api *API) aiBridgeCostUsers(rw http.ResponseWriter, r *http.Request) {
 	resp := codersdk.AIBridgeCostUsersResponse{
 		Users: make([]codersdk.AIBridgeCostUserRollup, 0, len(rows)),
 	}
+	if len(rows) == 0 && page.Offset > 0 {
+		// The window-function total only appears on returned rows, so an
+		// offset past the last match must re-query for the real count.
+		countRows, countErr := api.Database.GetAIBridgeCostByInitiator(ctx, database.GetAIBridgeCostByInitiatorParams{
+			StartDate: startDate,
+			EndDate:   endDate,
+			Client:    client,
+			Username:  search,
+			PageLimit: 1,
+		})
+		if countErr != nil {
+			httpapi.InternalServerError(rw, countErr)
+			return
+		}
+		if len(countRows) > 0 {
+			resp.Count = countRows[0].TotalCount
+		}
+	}
 	for _, row := range rows {
 		resp.Count = row.TotalCount
 		resp.Users = append(resp.Users, codersdk.AIBridgeCostUserRollup{

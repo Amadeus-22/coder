@@ -26,18 +26,21 @@ interface AgentAnalyticsPageProps {
 
 const AgentAnalyticsPage: FC<AgentAnalyticsPageProps> = ({ now }) => {
 	const { user } = useAuthContext();
-	const { entitlements } = useDashboard();
+	const { entitlements, experiments } = useDashboard();
 	const location = useLocation();
 	const [anchor] = useState<Dayjs>(() => dayjs());
 	const dateRange = createDateRange(now ?? anchor);
+	// TODO(AIGOV-443): drop the experiment gate once cost control is stable.
 	const isEntitled =
-		entitlements.features.aibridge.entitlement === "entitled" ||
-		entitlements.features.aibridge.entitlement === "grace_period";
+		(entitlements.features.aibridge.entitlement === "entitled" ||
+			entitlements.features.aibridge.entitlement === "grace_period") &&
+		experiments.includes("ai-gateway-cost-control");
 
 	const summaryQuery = useQuery({
 		...userAICostSummary(user?.id ?? "me", {
 			start_date: dateRange.startDate,
 			end_date: dateRange.endDate,
+			client: "Coder Agents",
 		}),
 		enabled: Boolean(user?.id) && isEntitled,
 	});

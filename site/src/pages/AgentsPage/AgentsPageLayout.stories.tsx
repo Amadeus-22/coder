@@ -308,6 +308,7 @@ const meta: Meta<typeof AgentsPageLayout> = {
 	decorators: [withAuthProvider, withDashboardProvider, withWebSocket],
 	parameters: {
 		features: ["aibridge"],
+		experiments: ["ai-gateway-cost-control"],
 		layout: "fullscreen",
 		// The layout opens a chat-watch WebSocket on mount. An empty
 		// event list gives an inert socket that never emits.
