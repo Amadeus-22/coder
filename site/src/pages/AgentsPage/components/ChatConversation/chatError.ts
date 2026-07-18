@@ -1,5 +1,33 @@
 import type * as TypesGen from "#/api/typesGenerated";
-import type { ChatDetailError } from "../../utils/usageLimitMessage";
+
+export type ChatDetailError = {
+	message: string;
+	detail?: string;
+	kind: TypesGen.ChatErrorKind;
+	provider?: string;
+	retryable?: boolean;
+	statusCode?: number;
+};
+
+export const chatDetailErrorsEqual = (
+	left: ChatDetailError | null | undefined,
+	right: ChatDetailError | null | undefined,
+): boolean => {
+	if (left === right) {
+		return true;
+	}
+	if (!left || !right) {
+		return false;
+	}
+	return (
+		left.kind === right.kind &&
+		left.message === right.message &&
+		left.detail === right.detail &&
+		left.provider === right.provider &&
+		left.retryable === right.retryable &&
+		left.statusCode === right.statusCode
+	);
+};
 
 export const normalizeChatErrorPayload = (
 	error: TypesGen.ChatError | undefined,

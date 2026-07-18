@@ -1276,10 +1276,6 @@ func (p *Server) createChildSubagentChatWithOptions(
 	// strip the root-only orchestration guidance from their prompt.
 	deploymentPrompt = strings.Replace(deploymentPrompt, subagentOrchestrationPromptBlock, "", 1)
 
-	if limitErr := p.checkUsageLimit(ctx, p.db, parent.OwnerID, uuid.NullUUID{UUID: parent.OrganizationID, Valid: true}); limitErr != nil {
-		return database.Chat{}, limitErr
-	}
-
 	workspaceAwareness := workspaceDetachedNoCreateAwareness
 	if parent.WorkspaceID.Valid {
 		workspaceAwareness = workspaceAttachedAwareness

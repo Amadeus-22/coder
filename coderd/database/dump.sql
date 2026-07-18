@@ -2031,28 +2031,6 @@ CREATE SEQUENCE chat_queued_messages_id_seq
 
 ALTER SEQUENCE chat_queued_messages_id_seq OWNED BY chat_queued_messages.id;
 
-CREATE TABLE chat_usage_limit_config (
-    id bigint NOT NULL,
-    singleton boolean DEFAULT true NOT NULL,
-    enabled boolean DEFAULT false NOT NULL,
-    default_limit_micros bigint DEFAULT 0 NOT NULL,
-    period text DEFAULT 'month'::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chat_usage_limit_config_default_limit_micros_check CHECK ((default_limit_micros >= 0)),
-    CONSTRAINT chat_usage_limit_config_period_check CHECK ((period = ANY (ARRAY['day'::text, 'week'::text, 'month'::text]))),
-    CONSTRAINT chat_usage_limit_config_singleton_check CHECK (singleton)
-);
-
-CREATE SEQUENCE chat_usage_limit_config_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-ALTER SEQUENCE chat_usage_limit_config_id_seq OWNED BY chat_usage_limit_config.id;
-
 CREATE TABLE chats (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     owner_id uuid NOT NULL,
@@ -2142,9 +2120,7 @@ CREATE TABLE users (
     one_time_passcode_expires_at timestamp with time zone,
     is_system boolean DEFAULT false NOT NULL,
     is_service_account boolean DEFAULT false NOT NULL,
-    chat_spend_limit_micros bigint,
     CONSTRAINT one_time_passcode_set CHECK ((((hashed_one_time_passcode IS NULL) AND (one_time_passcode_expires_at IS NULL)) OR ((hashed_one_time_passcode IS NOT NULL) AND (one_time_passcode_expires_at IS NOT NULL)))),
-    CONSTRAINT users_chat_spend_limit_micros_check CHECK (((chat_spend_limit_micros IS NULL) OR (chat_spend_limit_micros > 0))),
     CONSTRAINT users_email_not_empty CHECK (((is_service_account = true) = (email = ''::text))),
     CONSTRAINT users_service_account_login_type CHECK (((is_service_account = false) OR (login_type = 'none'::login_type))),
     CONSTRAINT users_username_min_length CHECK ((length(username) >= 1))
@@ -2373,9 +2349,7 @@ CREATE TABLE groups (
     avatar_url text DEFAULT ''::text NOT NULL,
     quota_allowance integer DEFAULT 0 NOT NULL,
     display_name text DEFAULT ''::text NOT NULL,
-    source group_source DEFAULT 'user'::group_source NOT NULL,
-    chat_spend_limit_micros bigint,
-    CONSTRAINT groups_chat_spend_limit_micros_check CHECK (((chat_spend_limit_micros IS NULL) OR (chat_spend_limit_micros > 0)))
+    source group_source DEFAULT 'user'::group_source NOT NULL
 );
 
 COMMENT ON COLUMN groups.display_name IS 'Display name is a custom, human-friendly group name that user can set. This is not required to be unique and can be the empty string.';
@@ -4212,8 +4186,6 @@ ALTER TABLE ONLY chat_messages ALTER COLUMN id SET DEFAULT nextval('chat_message
 
 ALTER TABLE ONLY chat_queued_messages ALTER COLUMN id SET DEFAULT nextval('chat_queued_messages_id_seq'::regclass);
 
-ALTER TABLE ONLY chat_usage_limit_config ALTER COLUMN id SET DEFAULT nextval('chat_usage_limit_config_id_seq'::regclass);
-
 ALTER TABLE ONLY licenses ALTER COLUMN id SET DEFAULT nextval('licenses_id_seq'::regclass);
 
 ALTER TABLE ONLY provisioner_job_logs ALTER COLUMN id SET DEFAULT nextval('provisioner_job_logs_id_seq'::regclass);
@@ -4303,12 +4275,6 @@ ALTER TABLE ONLY chat_model_configs
 
 ALTER TABLE ONLY chat_queued_messages
     ADD CONSTRAINT chat_queued_messages_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY chat_usage_limit_config
-    ADD CONSTRAINT chat_usage_limit_config_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY chat_usage_limit_config
-    ADD CONSTRAINT chat_usage_limit_config_singleton_key UNIQUE (singleton);
 
 ALTER TABLE ONLY chats
     ADD CONSTRAINT chats_pkey PRIMARY KEY (id);

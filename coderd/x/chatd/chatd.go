@@ -20,7 +20,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/shopspring/decimal"
 	"github.com/sqlc-dev/pqtype"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/xerrors"
@@ -1141,27 +1140,6 @@ var (
 	ErrNothingToCompact = xerrors.New("nothing to compact")
 )
 
-// UsageLimitExceededError indicates the user has exceeded their chat spend
-// limit.
-type UsageLimitExceededError struct {
-	LimitMicros    int64
-	ConsumedMicros int64
-	PeriodEnd      time.Time
-}
-
-func formatMicrosAsDollars(micros int64) string {
-	return "$" + decimal.NewFromInt(micros).Shift(-6).StringFixed(2)
-}
-
-func (e *UsageLimitExceededError) Error() string {
-	return fmt.Sprintf(
-		"usage limit exceeded: spent %s of %s limit, resets at %s",
-		formatMicrosAsDollars(e.ConsumedMicros),
-		formatMicrosAsDollars(e.LimitMicros),
-		e.PeriodEnd.Format(time.RFC3339),
-	)
-}
-
 // CreateOptions controls chat creation in the shared chat mutation path.
 type CreateOptions struct {
 	OrganizationID     uuid.UUID
@@ -1284,11 +1262,6 @@ func (p *Server) CreateChat(ctx context.Context, opts CreateOptions) (database.C
 	// chat creation does not hold one DB connection while waiting for
 	// another pool checkout.
 	deploymentPrompt := p.resolveDeploymentSystemPrompt(ctx)
-
-	// Usage limits gate the create before we touch the state machine.
-	if limitErr := p.checkUsageLimit(ctx, p.db, opts.OwnerID, uuid.NullUUID{UUID: opts.OrganizationID, Valid: true}); limitErr != nil {
-		return database.Chat{}, limitErr
-	}
 
 	if opts.ModelConfigID != uuid.Nil {
 		if err := requireEnabledChatModelConfig(ctx, p.db, opts.ModelConfigID); err != nil {
@@ -1429,11 +1402,6 @@ func (p *Server) SendMessage(
 			return ErrChatArchived
 		}
 
-		// Enforce usage limits before any state-machine work.
-		if limitErr := p.checkUsageLimit(ctx, store, lockedChat.OwnerID, uuid.NullUUID{UUID: lockedChat.OrganizationID, Valid: true}); limitErr != nil {
-			return limitErr
-		}
-
 		if requestedPlanMode != nil {
 			lockedChat, err = store.UpdateChatPlanModeByID(ctx, database.UpdateChatPlanModeByIDParams{
 				PlanMode: *requestedPlanMode,
@@ -1516,31 +1484,6 @@ func (p *Server) SendMessage(
 	// effects are handled by chat:update consumers.
 	p.publishChatPubsubEvent(result.Chat, codersdk.ChatWatchEventKindStatusChange, nil)
 	return result, nil
-}
-
-func (p *Server) checkUsageLimit(ctx context.Context, store database.Store, ownerID uuid.UUID, organizationID uuid.NullUUID) error {
-	status, err := ResolveUsageLimitStatus(ctx, store, ownerID, organizationID, time.Now())
-	if err != nil {
-		// Fail open: never block chat due to a limit-resolution failure.
-		p.logger.Warn(ctx, "usage limit check failed, allowing message",
-			slog.F("owner_id", ownerID),
-			slog.Error(err),
-		)
-		return nil
-	}
-	if status == nil {
-		return nil
-	}
-	// Block when current spend reaches or exceeds limit (>= ensures
-	// the user cannot start new conversations once the limit is hit).
-	if status.SpendLimitMicros != nil && status.CurrentSpend >= *status.SpendLimitMicros {
-		return &UsageLimitExceededError{
-			LimitMicros:    *status.SpendLimitMicros,
-			ConsumedMicros: status.CurrentSpend,
-			PeriodEnd:      status.PeriodEnd,
-		}
-	}
-	return nil
 }
 
 func chatdModelConfigLookupContext(ctx context.Context) context.Context {
@@ -1669,10 +1612,6 @@ func (p *Server) EditMessage(
 		if lockedChat.Archived {
 			return ErrChatArchived
 		}
-		if limitErr := p.checkUsageLimit(ctx, store, lockedChat.OwnerID, uuid.NullUUID{UUID: lockedChat.OrganizationID, Valid: true}); limitErr != nil {
-			return limitErr
-		}
-
 		// Capture the target message for the post-commit debug
 		// cleanup hook below. The transition itself revalidates
 		// chat ownership and user-message constraints.
@@ -2180,11 +2119,6 @@ func (p *Server) CompactChat(
 		if _, ok := firstUncompressedAssistantAfter(messages, boundary); !ok {
 			return ErrNothingToCompact
 		}
-		// Usage validation runs last so rejected requests report the more
-		// specific state or content conflict. Its failure rolls back the marker.
-		if limitErr := p.checkUsageLimit(ctx, store, lockedChat.OwnerID, uuid.NullUUID{UUID: lockedChat.OrganizationID, Valid: true}); limitErr != nil {
-			return limitErr
-		}
 		refreshed = result.Chat
 		return nil
 	})
@@ -2339,10 +2273,6 @@ func (p *Server) generateManualTitleCandidate(
 	store database.Store,
 	chat database.Chat,
 ) (string, error) {
-	if limitErr := p.checkUsageLimit(ctx, store, chat.OwnerID, uuid.NullUUID{UUID: chat.OrganizationID, Valid: true}); limitErr != nil {
-		return "", limitErr
-	}
-
 	headMessages, err := store.GetChatMessagesByChatIDAscPaginated(
 		ctx,
 		database.GetChatMessagesByChatIDAscPaginatedParams{

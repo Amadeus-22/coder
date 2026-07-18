@@ -172,7 +172,6 @@ var auditableResourcesTypes = map[any]map[string]Action{
 		"one_time_passcode_expires_at": ActionTrack,
 		"is_system":                    ActionTrack, // Should never change, but track it anyway.
 		"is_service_account":           ActionTrack, // Should never change, but track it anyway.
-		"chat_spend_limit_micros":      ActionTrack,
 	},
 	&database.WorkspaceTable{}: {
 		"id":                 ActionTrack,
@@ -217,15 +216,14 @@ var auditableResourcesTypes = map[any]map[string]Action{
 		"notified_autostop_deadline": ActionIgnore, // Updated by the notification system, not by user action.
 	},
 	&database.AuditableGroup{}: {
-		"id":                      ActionTrack,
-		"name":                    ActionTrack,
-		"display_name":            ActionTrack,
-		"organization_id":         ActionIgnore, // Never changes.
-		"avatar_url":              ActionTrack,
-		"quota_allowance":         ActionTrack,
-		"members":                 ActionTrack,
-		"source":                  ActionIgnore,
-		"chat_spend_limit_micros": ActionTrack,
+		"id":              ActionTrack,
+		"name":            ActionTrack,
+		"display_name":    ActionTrack,
+		"organization_id": ActionIgnore, // Never changes.
+		"avatar_url":      ActionTrack,
+		"quota_allowance": ActionTrack,
+		"members":         ActionTrack,
+		"source":          ActionIgnore,
 	},
 	&database.AuditableGroupAIBudget{}: {
 		"group_id":           ActionIgnore, // Group name is already included in the title.

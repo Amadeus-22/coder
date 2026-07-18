@@ -1,14 +1,10 @@
 import { type FC, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useQuery } from "react-query";
-import { Link } from "react-router";
 import { toast } from "sonner";
-import { isApiError } from "#/api/errors";
 import { permittedOrganizations } from "#/api/queries/organizations";
 import type * as TypesGen from "#/api/typesGenerated";
 import type { AgentChatSendShortcut } from "#/api/typesGenerated";
-import { Alert, AlertDescription } from "#/components/Alert/Alert";
 import { ErrorAlert } from "#/components/Alert/ErrorAlert";
-import { Button } from "#/components/Button/Button";
 import { ConfirmDialog } from "#/components/Dialogs/ConfirmDialog/ConfirmDialog";
 import { useDashboard } from "#/modules/dashboard/useDashboard";
 import { docs } from "#/utils/docs";
@@ -21,10 +17,6 @@ import {
 	hasUserFixableProviders,
 } from "../utils/modelOptions";
 import { pickReasoningEffort } from "../utils/reasoningEffort";
-import {
-	formatUsageLimitMessage,
-	isChatUsageLimitExceededResponse,
-} from "../utils/usageLimitMessage";
 import { AgentChatInput } from "./AgentChatInput";
 import { ChatAccessDeniedAlert } from "./ChatAccessDeniedAlert";
 import type { ModelSelectorOption } from "./ChatElements";
@@ -484,24 +476,7 @@ export const AgentCreateForm: FC<AgentCreateFormProps> = ({
 					{isForbidden ? (
 						<ChatAccessDeniedAlert />
 					) : createError ? (
-						isApiError(createError) &&
-						createError.response?.status === 409 &&
-						isChatUsageLimitExceededResponse(createError.response.data) ? (
-							<Alert
-								severity="info"
-								actions={
-									<Button asChild size="sm">
-										<Link to="/agents/analytics">View usage</Link>
-									</Button>
-								}
-							>
-								<AlertDescription>
-									{formatUsageLimitMessage(createError.response.data)}
-								</AlertDescription>
-							</Alert>
-						) : (
-							<ErrorAlert error={createError} />
-						)
+						<ErrorAlert error={createError} />
 					) : null}
 					{workspacesError != null && <ErrorAlert error={workspacesError} />}
 					{permittedOrgsQuery.error != null && (

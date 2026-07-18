@@ -70,6 +70,7 @@ var (
 		"quota",
 		"billing",
 		"payment required",
+		"ai budget of",
 	}
 	// Hard usage exhaustion codes that fire at any HTTP status,
 	// including 429.

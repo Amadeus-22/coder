@@ -73,7 +73,10 @@ import {
 } from "./AgentChatPageView";
 import type { AgentsPageOutletContext } from "./AgentsPageLayout";
 import type { ChatMessageInputRef } from "./components/AgentChatInput";
-import { normalizeChatErrorPayload } from "./components/ChatConversation/chatError";
+import {
+	type ChatDetailError,
+	normalizeChatErrorPayload,
+} from "./components/ChatConversation/chatError";
 import {
 	getParentChatID,
 	getWorkspaceAgent,
@@ -112,11 +115,6 @@ import {
 	chatSlashCommandTriggerText,
 	resolveChatSlashCommandAvailability,
 } from "./utils/slashCommands";
-import {
-	type ChatDetailError,
-	formatUsageLimitMessage,
-	isChatUsageLimitExceededResponse,
-} from "./utils/usageLimitMessage";
 
 /** localStorage key controlling whether the right panel is visible. */
 export const RIGHT_PANEL_OPEN_KEY = "agents.right-panel-open";
@@ -199,7 +197,7 @@ export const runPromoteQueuedMessage = async (params: {
 	promoteQueuedMessage: (id: number) => Promise<void>;
 	agentId: string | undefined;
 	clearChatErrorReason: (chatID: string) => void;
-	handleUsageLimitError: (error: unknown) => void;
+	onError: (error: unknown) => void;
 }): Promise<void> => {
 	const {
 		id,
@@ -207,7 +205,7 @@ export const runPromoteQueuedMessage = async (params: {
 		promoteQueuedMessage,
 		agentId,
 		clearChatErrorReason,
-		handleUsageLimitError,
+		onError,
 	} = params;
 	const previousSnapshot = store.getSnapshot();
 	store.batch(() => {
@@ -227,7 +225,7 @@ export const runPromoteQueuedMessage = async (params: {
 	} catch (error) {
 		store.unsuppressQueuedMessageID(id);
 		restoreOptimisticRequestSnapshot(store, previousSnapshot);
-		handleUsageLimitError(error);
+		onError(error);
 		throw error;
 	}
 };
@@ -634,9 +632,6 @@ const getPersistedDetailError = ({
 	chatRecord: TypesGen.Chat | undefined;
 	cachedError: ChatDetailError | undefined;
 }): ChatDetailError | undefined => {
-	if (cachedError?.kind === "usage_limit") {
-		return cachedError;
-	}
 	if (chatStatus !== "error") {
 		return undefined;
 	}
@@ -1236,31 +1231,18 @@ const AgentChatPage: FC = () => {
 		);
 	};
 
-	const handleUsageLimitError = (error: unknown): void => {
-		if (!agentId) {
+	const handleRequestError = (error: unknown): void => {
+		if (!agentId || !isApiError(error)) {
 			return;
 		}
-		if (
-			isApiError(error) &&
-			error.response?.status === 409 &&
-			isChatUsageLimitExceededResponse(error.response.data)
-		) {
-			const reason: ChatDetailError = {
-				kind: "usage_limit",
-				message: formatUsageLimitMessage(error.response.data),
-			};
-			store.setStreamError(reason);
-			setChatErrorReason(agentId, reason);
-		} else if (isApiError(error)) {
-			const detail = error.response?.data?.detail?.trim() || undefined;
-			const reason: ChatDetailError = {
-				kind: "generic",
-				message: getErrorMessage(error, "An unexpected error occurred."),
-				...(detail ? { detail } : {}),
-			};
-			store.setStreamError(reason);
-			setChatErrorReason(agentId, reason);
-		}
+		const detail = error.response?.data?.detail?.trim() || undefined;
+		const reason: ChatDetailError = {
+			kind: "generic",
+			message: getErrorMessage(error, "An unexpected error occurred."),
+			...(detail ? { detail } : {}),
+		};
+		store.setStreamError(reason);
+		setChatErrorReason(agentId, reason);
 	};
 
 	const handleInterrupt = () => {
@@ -1303,7 +1285,7 @@ const AgentChatPage: FC = () => {
 			promoteQueuedMessage,
 			agentId,
 			clearChatErrorReason,
-			handleUsageLimitError,
+			onError: handleRequestError,
 		});
 
 	const editing = useConversationEditingState({
@@ -1595,7 +1577,7 @@ const AgentChatPage: FC = () => {
 				scrollToBottom: scrollToBottomRef.current,
 				onError: (error) => {
 					restoreOptimisticRequestSnapshot(store, previousSnapshot);
-					handleUsageLimitError(error);
+					handleRequestError(error);
 				},
 			});
 			if (editSelectedModelConfigID) {
@@ -1635,7 +1617,7 @@ const AgentChatPage: FC = () => {
 		try {
 			response = await sendMessage(request);
 		} catch (error) {
-			handleUsageLimitError(error);
+			handleRequestError(error);
 			throw error;
 		}
 		// When the server accepts the message immediately (not

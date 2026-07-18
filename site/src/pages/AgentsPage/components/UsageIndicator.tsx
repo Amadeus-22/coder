@@ -3,7 +3,7 @@ import { CoinsIcon, InfoIcon, ServerIcon } from "lucide-react";
 import { type FC, Fragment, type ReactNode } from "react";
 import { useQuery } from "react-query";
 import { Link } from "react-router";
-import { chatUsageLimitStatus } from "#/api/queries/chats";
+import { meAISpend } from "#/api/queries/users";
 import { workspaceQuota } from "#/api/queries/workspaceQuota";
 import { workspaces } from "#/api/queries/workspaces";
 import {
@@ -25,7 +25,6 @@ import {
 	getDefaultOrganizationName,
 	useDashboard,
 } from "#/modules/dashboard/useDashboard";
-import { getUsageLimitPeriodLabel } from "#/pages/AISettingsPage/SpendPage/components/ChatCostSummaryView";
 import {
 	clampPercentage,
 	getSeverity,
@@ -52,9 +51,7 @@ type UsageSectionData = {
 const numberFormatter = new Intl.NumberFormat("en-US");
 
 export const UsageIndicator: FC = () => {
-	const { data: chatUsage, isError: isChatUsageError } = useQuery(
-		chatUsageLimitStatus(),
-	);
+	const { data: aiSpend, isError: isAISpendError } = useQuery(meAISpend());
 	const { user } = useAuthenticated();
 	const { organizations } = useDashboard();
 	const organizationName = getDefaultOrganizationName(organizations);
@@ -75,16 +72,15 @@ export const UsageIndicator: FC = () => {
 	});
 	const sections: UsageSectionData[] = [];
 
-	if (!isChatUsageError && chatUsage?.is_limited) {
-		const spendLimit = chatUsage.spend_limit_micros ?? 0;
-		const currentSpend = chatUsage.current_spend;
-		const periodLabel = getUsageLimitPeriodLabel(chatUsage.period);
+	if (!isAISpendError && aiSpend && aiSpend.spend_limit_micros !== null) {
+		const spendLimit = aiSpend.spend_limit_micros;
+		const currentSpend = aiSpend.current_spend_micros;
 		const exceeded = spendLimit > 0 && currentSpend >= spendLimit;
 
 		sections.push({
-			id: "ai-usage",
-			title: `${periodLabel} usage`,
-			progressLabel: `${periodLabel} spend usage`,
+			id: "ai-spend",
+			title: "AI spend",
+			progressLabel: "AI spend usage",
 			percent: usageProgressPercentage(currentSpend, spendLimit),
 			severity: getSeverity(currentSpend, spendLimit),
 			icon: <CoinsIcon className="size-3.5" />,
@@ -100,8 +96,8 @@ export const UsageIndicator: FC = () => {
 					)}
 				</>
 			),
-			secondaryDetail: chatUsage.period_end
-				? `Resets ${dayjs(chatUsage.period_end).format("MMM D, YYYY")}`
+			secondaryDetail: aiSpend.period_end
+				? `Resets ${dayjs(aiSpend.period_end).format("MMM D, YYYY")}`
 				: undefined,
 		});
 	}

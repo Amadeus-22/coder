@@ -136,6 +136,18 @@ func TestClassify(t *testing.T) {
 			},
 		},
 		{
+			name: "AIBudget403ClassifiesAsUsageLimit",
+			err:  xerrors.New("status 403: AI budget of US$5.00 exceeded. Please contact an administrator for more details."),
+			want: chaterror.ClassifiedError{
+				Message:    "The AI usage limit has been exceeded. Contact an administrator or check the applicable budget and quota settings.",
+				Detail:     "status 403: AI budget of US$5.00 exceeded. Please contact an administrator for more details.",
+				Kind:       codersdk.ChatErrorKindUsageLimit,
+				Provider:   "",
+				Retryable:  false,
+				StatusCode: 403,
+			},
+		},
+		{
 			name: "ForbiddenContextLengthClassifiesAsConfig",
 			err:  xerrors.New("forbidden: context length exceeded"),
 			want: chaterror.ClassifiedError{

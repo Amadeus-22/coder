@@ -59,6 +59,10 @@ import { pageTitle } from "#/utils/page";
 import { createReconnectingWebSocket } from "#/utils/reconnectingWebSocket";
 import { emptyInputStorageKey } from "./components/AgentCreateForm";
 import {
+	type ChatDetailError,
+	chatDetailErrorsEqual,
+} from "./components/ChatConversation/chatError";
+import {
 	ChatsSidebar,
 	isSettingsView,
 	sidebarViewFromPath,
@@ -82,10 +86,6 @@ import {
 } from "./utils/modelOptions";
 import { clearPersistedRightPanelState } from "./utils/rightPanelTabStorage";
 import { clearPersistedSidebarTabId } from "./utils/sidebarTabStorage";
-import {
-	type ChatDetailError,
-	chatDetailErrorsEqual,
-} from "./utils/usageLimitMessage";
 
 export interface AgentsPageOutletContext {
 	chatErrorReasons: Record<string, ChatDetailError>;
