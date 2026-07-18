@@ -288,3 +288,19 @@ export const NoBudget: Story = {
 		withWorkspaceQuota(noWorkspaceQuota),
 	],
 };
+
+export const ZeroBudget: Story = {
+	decorators: [
+		withAISpend(
+			aiSpendStatus({ spend_limit_micros: 0, current_spend_micros: 0 }),
+		),
+		withWorkspaceQuota(noWorkspaceQuota),
+	],
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const trigger = await canvas.findByRole("button");
+		await userEvent.click(trigger);
+		const body = within(canvasElement.ownerDocument.body);
+		await body.findByText(/limit exceeded/);
+	},
+};

@@ -83,14 +83,18 @@ export const UsageIndicator: FC = () => {
 	if (!isAISpendError && aiSpend && aiSpend.spend_limit_micros !== null) {
 		const spendLimit = aiSpend.spend_limit_micros;
 		const currentSpend = aiSpend.current_spend_micros;
-		const exceeded = spendLimit > 0 && currentSpend >= spendLimit;
+		// The gateway blocks once spend >= limit, so a zero budget is
+		// always exhausted.
+		const exceeded = currentSpend >= spendLimit;
 
 		sections.push({
 			id: "ai-spend",
 			title: "AI spend",
 			progressLabel: "AI spend usage",
-			percent: usageProgressPercentage(currentSpend, spendLimit),
-			severity: getSeverity(currentSpend, spendLimit),
+			percent: exceeded
+				? 100
+				: usageProgressPercentage(currentSpend, spendLimit),
+			severity: exceeded ? "exceeded" : getSeverity(currentSpend, spendLimit),
 			icon: <CoinsIcon className="size-3.5" />,
 			hoverLabel: `Spend ${formatCostMicros(currentSpend)}`,
 			detail: (
