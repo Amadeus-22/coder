@@ -1479,13 +1479,19 @@ type ChatModelCallConfig struct {
 	ProviderOptions  *ChatModelProviderOptions       `json:"provider_options,omitempty" description:"Provider-specific option overrides"`
 }
 
-// UnmarshalStrict rejects unknown fields except for the removed cost field,
-// which may still be present in stored model configuration JSON.
+// UnmarshalStrict rejects unknown fields except for removed pricing fields,
+// which may still be present in stored model configuration JSON: the nested
+// cost object and the four top-level per-million-token price keys that
+// predate it (see migration 000435, which read both forms).
 func (c *ChatModelCallConfig) UnmarshalStrict(data []byte) error {
 	type chatModelCallConfigAlias ChatModelCallConfig
 	aux := struct {
 		*chatModelCallConfigAlias
-		Cost json.RawMessage `json:"cost"`
+		Cost            json.RawMessage `json:"cost"`
+		InputPrice      json.RawMessage `json:"input_price_per_million_tokens"`
+		OutputPrice     json.RawMessage `json:"output_price_per_million_tokens"`
+		CacheReadPrice  json.RawMessage `json:"cache_read_price_per_million_tokens"`
+		CacheWritePrice json.RawMessage `json:"cache_write_price_per_million_tokens"`
 	}{
 		chatModelCallConfigAlias: (*chatModelCallConfigAlias)(c),
 	}

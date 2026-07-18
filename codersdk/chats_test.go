@@ -438,6 +438,18 @@ func TestChatModelCallConfig_UnmarshalStoredCost(t *testing.T) {
 	require.NoError(t, decoded.UnmarshalStrict(raw))
 	require.NotNil(t, decoded.Temperature)
 
+	// Configs predating the nested cost object stored the pricing keys at
+	// the top level (see migration 000435).
+	legacyTopLevel := []byte(`{
+		"temperature": 0.5,
+		"input_price_per_million_tokens": "5",
+		"output_price_per_million_tokens": "10",
+		"cache_read_price_per_million_tokens": "1",
+		"cache_write_price_per_million_tokens": "2"
+	}`)
+	require.NoError(t, decoded.UnmarshalStrict(legacyTopLevel))
+	require.NotNil(t, decoded.Temperature)
+
 	err := decoded.UnmarshalStrict([]byte(`{"provider_options": {"anthropic": {"bogus_setting": true}}}`))
 	require.ErrorContains(t, err, `unknown field "bogus_setting"`)
 
