@@ -91,6 +91,110 @@ export interface AIBridgeConfig {
 }
 
 // From codersdk/aibridge.go
+/**
+ * AIBridgeCostChatBreakdown is the AI Gateway cost attributed to a single
+ * top-level chat. Delegated (child) chats report their parent chat as the
+ * gateway session, and forked chats roll up under their root chat.
+ */
+export interface AIBridgeCostChatBreakdown extends AIBridgeCostTokenTotals {
+	readonly chat_id: string;
+	readonly chat_title: string;
+	readonly total_cost_micros: number;
+	readonly request_count: number;
+	readonly unpriced_request_count: number;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeCostFilter filters AI Gateway cost aggregations. The zero value
+ * covers the last 30 days across all clients.
+ */
+export interface AIBridgeCostFilter {
+	/**
+	 * StartDate is the inclusive lower bound on interception start time.
+	 */
+	readonly start_date?: string;
+	/**
+	 * EndDate is the exclusive upper bound on interception start time.
+	 */
+	readonly end_date?: string;
+	/**
+	 * Client restricts the aggregation to a single client, e.g.
+	 * "Coder Agents". Empty includes all clients.
+	 */
+	readonly client?: string;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeCostModelBreakdown is the AI Gateway cost attributed to a single
+ * (provider, model) pair.
+ */
+export interface AIBridgeCostModelBreakdown extends AIBridgeCostTokenTotals {
+	readonly provider: string;
+	readonly model: string;
+	readonly total_cost_micros: number;
+	readonly request_count: number;
+	/**
+	 * UnpricedRequestCount is the number of requests with at least one token
+	 * usage recorded without a computed cost (no price was known for the
+	 * model), so TotalCostMicros undercounts their true cost.
+	 */
+	readonly unpriced_request_count: number;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeCostTokenTotals are token sums over the token usages recorded for
+ * the matched interceptions.
+ */
+export interface AIBridgeCostTokenTotals {
+	readonly total_input_tokens: number;
+	readonly total_output_tokens: number;
+	readonly total_cache_read_tokens: number;
+	readonly total_cache_write_tokens: number;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeCostUserRollup is one user's AI Gateway cost rollup within a
+ * deployment-wide listing.
+ */
+export interface AIBridgeCostUserRollup extends AIBridgeCostTokenTotals {
+	readonly user_id: string;
+	readonly username: string;
+	readonly name: string;
+	readonly avatar_url: string;
+	readonly total_cost_micros: number;
+	readonly request_count: number;
+	readonly unpriced_request_count: number;
+	/**
+	 * SessionCount is the number of distinct AI Gateway sessions. For Coder
+	 * Agents traffic each top-level chat is one session.
+	 */
+	readonly session_count: number;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeCostUsersFilter filters the deployment-wide per-user AI Gateway
+ * cost listing.
+ */
+export interface AIBridgeCostUsersFilter extends AIBridgeCostFilter {
+	/**
+	 * Search matches usernames and display names, case-insensitively.
+	 */
+	readonly search?: string;
+	readonly Pagination: Pagination;
+}
+
+// From codersdk/aibridge.go
+export interface AIBridgeCostUsersResponse {
+	readonly users: readonly AIBridgeCostUserRollup[];
+	readonly count: number;
+}
+
+// From codersdk/aibridge.go
 export interface AIBridgeListSessionsResponse {
 	readonly count: number;
 	readonly sessions: readonly AIBridgeSession[];
@@ -264,6 +368,23 @@ export interface AIBridgeToolCall {
 	// empty interface{} type, falling back to unknown
 	readonly metadata: Record<string, unknown>;
 	readonly created_at: string;
+}
+
+// From codersdk/aibridge.go
+/**
+ * AIBridgeUserCostSummary is a user's AI Gateway cost over a date range,
+ * aggregated from intercepted requests, with per-model and per-chat
+ * breakdowns.
+ */
+export interface AIBridgeUserCostSummary extends AIBridgeCostTokenTotals {
+	readonly start_date: string;
+	readonly end_date: string;
+	readonly total_cost_micros: number;
+	readonly request_count: number;
+	readonly priced_request_count: number;
+	readonly unpriced_request_count: number;
+	readonly by_model: readonly AIBridgeCostModelBreakdown[];
+	readonly by_chat: readonly AIBridgeCostChatBreakdown[];
 }
 
 // From codersdk/aibridge.go

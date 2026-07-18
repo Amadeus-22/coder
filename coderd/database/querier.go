@@ -290,6 +290,7 @@ type sqlcQuerier interface {
 	// The query finds presets where all preset parameters are present in the provided parameters,
 	// and returns the preset with the most parameters (largest subset).
 	FindMatchingPresetID(ctx context.Context, arg FindMatchingPresetIDParams) (uuid.UUID, error)
+	GetAIBridgeCostByInitiator(ctx context.Context, arg GetAIBridgeCostByInitiatorParams) ([]GetAIBridgeCostByInitiatorRow, error)
 	GetAIBridgeInterceptionByID(ctx context.Context, id uuid.UUID) (AIBridgeInterception, error)
 	// Look up the parent interception and the root of the thread by finding
 	// which interception recorded a tool usage with the given tool call ID.
@@ -299,6 +300,19 @@ type sqlcQuerier interface {
 	GetAIBridgeInterceptions(ctx context.Context) ([]AIBridgeInterception, error)
 	GetAIBridgeTokenUsagesByInterceptionID(ctx context.Context, interceptionID uuid.UUID) ([]AIBridgeTokenUsage, error)
 	GetAIBridgeToolUsagesByInterceptionID(ctx context.Context, interceptionID uuid.UUID) ([]AIBridgeToolUsage, error)
+	// Per-chat AI Gateway cost breakdown for one initiator within a date range.
+	// Coder Agents traffic records the top-level chat ID as the interception
+	// session ID (chatprovider.CoderHeaders), so joining chats on session_id
+	// attributes each request to its chat. The owner check guards against
+	// session-id collisions from other clients. Forked chats roll up under their
+	// root chat, matching how the chat UI groups them.
+	GetAIBridgeUserCostByChat(ctx context.Context, arg GetAIBridgeUserCostByChatParams) ([]GetAIBridgeUserCostByChatRow, error)
+	GetAIBridgeUserCostByModel(ctx context.Context, arg GetAIBridgeUserCostByModelParams) ([]GetAIBridgeUserCostByModelRow, error)
+	// Aggregate AI Gateway cost for one initiator within a date range. Cost and
+	// token sums come from recorded token usages; request counts are distinct
+	// interceptions. Unpriced requests have at least one token usage row without
+	// a computed cost (no price was known for the model at recording time).
+	GetAIBridgeUserCostSummary(ctx context.Context, arg GetAIBridgeUserCostSummaryParams) (GetAIBridgeUserCostSummaryRow, error)
 	GetAIBridgeUserPromptsByInterceptionID(ctx context.Context, interceptionID uuid.UUID) ([]AIBridgeUserPrompt, error)
 	// Authenticates a standalone AI Gateway replica by its hashed key secret,
 	// returning the matched key. The lookup is an exact match on a unique index,

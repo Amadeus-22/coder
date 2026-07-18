@@ -458,6 +458,133 @@
 | `send_actor_headers`                | boolean                                                              | false    |              |                                                                                                                                                                                 |
 | `structured_logging`                | boolean                                                              | false    |              |                                                                                                                                                                                 |
 
+## codersdk.AIBridgeCostChatBreakdown
+
+```json
+{
+  "chat_id": "efc9fe20-a1e5-4a8c-9c48-f1b30c1e4f86",
+  "chat_title": "string",
+  "request_count": 0,
+  "total_cache_read_tokens": 0,
+  "total_cache_write_tokens": 0,
+  "total_cost_micros": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "unpriced_request_count": 0
+}
+```
+
+### Properties
+
+| Name                       | Type    | Required | Restrictions | Description |
+|----------------------------|---------|----------|--------------|-------------|
+| `chat_id`                  | string  | false    |              |             |
+| `chat_title`               | string  | false    |              |             |
+| `request_count`            | integer | false    |              |             |
+| `total_cache_read_tokens`  | integer | false    |              |             |
+| `total_cache_write_tokens` | integer | false    |              |             |
+| `total_cost_micros`        | integer | false    |              |             |
+| `total_input_tokens`       | integer | false    |              |             |
+| `total_output_tokens`      | integer | false    |              |             |
+| `unpriced_request_count`   | integer | false    |              |             |
+
+## codersdk.AIBridgeCostModelBreakdown
+
+```json
+{
+  "model": "string",
+  "provider": "string",
+  "request_count": 0,
+  "total_cache_read_tokens": 0,
+  "total_cache_write_tokens": 0,
+  "total_cost_micros": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "unpriced_request_count": 0
+}
+```
+
+### Properties
+
+| Name                       | Type    | Required | Restrictions | Description                                                                                                                                                                                         |
+|----------------------------|---------|----------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `model`                    | string  | false    |              |                                                                                                                                                                                                     |
+| `provider`                 | string  | false    |              |                                                                                                                                                                                                     |
+| `request_count`            | integer | false    |              |                                                                                                                                                                                                     |
+| `total_cache_read_tokens`  | integer | false    |              |                                                                                                                                                                                                     |
+| `total_cache_write_tokens` | integer | false    |              |                                                                                                                                                                                                     |
+| `total_cost_micros`        | integer | false    |              |                                                                                                                                                                                                     |
+| `total_input_tokens`       | integer | false    |              |                                                                                                                                                                                                     |
+| `total_output_tokens`      | integer | false    |              |                                                                                                                                                                                                     |
+| `unpriced_request_count`   | integer | false    |              | Unpriced request count is the number of requests with at least one token usage recorded without a computed cost (no price was known for the model), so TotalCostMicros undercounts their true cost. |
+
+## codersdk.AIBridgeCostUserRollup
+
+```json
+{
+  "avatar_url": "string",
+  "name": "string",
+  "request_count": 0,
+  "session_count": 0,
+  "total_cache_read_tokens": 0,
+  "total_cache_write_tokens": 0,
+  "total_cost_micros": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "unpriced_request_count": 0,
+  "user_id": "a169451c-8525-4352-b8ca-070dd449a1a5",
+  "username": "string"
+}
+```
+
+### Properties
+
+| Name                       | Type    | Required | Restrictions | Description                                                                                                               |
+|----------------------------|---------|----------|--------------|---------------------------------------------------------------------------------------------------------------------------|
+| `avatar_url`               | string  | false    |              |                                                                                                                           |
+| `name`                     | string  | false    |              |                                                                                                                           |
+| `request_count`            | integer | false    |              |                                                                                                                           |
+| `session_count`            | integer | false    |              | Session count is the number of distinct AI Gateway sessions. For Coder Agents traffic each top-level chat is one session. |
+| `total_cache_read_tokens`  | integer | false    |              |                                                                                                                           |
+| `total_cache_write_tokens` | integer | false    |              |                                                                                                                           |
+| `total_cost_micros`        | integer | false    |              |                                                                                                                           |
+| `total_input_tokens`       | integer | false    |              |                                                                                                                           |
+| `total_output_tokens`      | integer | false    |              |                                                                                                                           |
+| `unpriced_request_count`   | integer | false    |              |                                                                                                                           |
+| `user_id`                  | string  | false    |              |                                                                                                                           |
+| `username`                 | string  | false    |              |                                                                                                                           |
+
+## codersdk.AIBridgeCostUsersResponse
+
+```json
+{
+  "count": 0,
+  "users": [
+    {
+      "avatar_url": "string",
+      "name": "string",
+      "request_count": 0,
+      "session_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0,
+      "user_id": "a169451c-8525-4352-b8ca-070dd449a1a5",
+      "username": "string"
+    }
+  ]
+}
+```
+
+### Properties
+
+| Name    | Type                                                                        | Required | Restrictions | Description |
+|---------|-----------------------------------------------------------------------------|----------|--------------|-------------|
+| `count` | integer                                                                     | false    |              |             |
+| `users` | array of [codersdk.AIBridgeCostUserRollup](#codersdkaibridgecostuserrollup) | false    |              |             |
+
 ## codersdk.AIBridgeListSessionsResponse
 
 ```json
@@ -937,6 +1064,66 @@
 | `provider_response_id` | string  | false    |              |             |
 | `server_url`           | string  | false    |              |             |
 | `tool`                 | string  | false    |              |             |
+
+## codersdk.AIBridgeUserCostSummary
+
+```json
+{
+  "by_chat": [
+    {
+      "chat_id": "efc9fe20-a1e5-4a8c-9c48-f1b30c1e4f86",
+      "chat_title": "string",
+      "request_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0
+    }
+  ],
+  "by_model": [
+    {
+      "model": "string",
+      "provider": "string",
+      "request_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0
+    }
+  ],
+  "end_date": "2019-08-24T14:15:22Z",
+  "priced_request_count": 0,
+  "request_count": 0,
+  "start_date": "2019-08-24T14:15:22Z",
+  "total_cache_read_tokens": 0,
+  "total_cache_write_tokens": 0,
+  "total_cost_micros": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "unpriced_request_count": 0
+}
+```
+
+### Properties
+
+| Name                       | Type                                                                                | Required | Restrictions | Description |
+|----------------------------|-------------------------------------------------------------------------------------|----------|--------------|-------------|
+| `by_chat`                  | array of [codersdk.AIBridgeCostChatBreakdown](#codersdkaibridgecostchatbreakdown)   | false    |              |             |
+| `by_model`                 | array of [codersdk.AIBridgeCostModelBreakdown](#codersdkaibridgecostmodelbreakdown) | false    |              |             |
+| `end_date`                 | string                                                                              | false    |              |             |
+| `priced_request_count`     | integer                                                                             | false    |              |             |
+| `request_count`            | integer                                                                             | false    |              |             |
+| `start_date`               | string                                                                              | false    |              |             |
+| `total_cache_read_tokens`  | integer                                                                             | false    |              |             |
+| `total_cache_write_tokens` | integer                                                                             | false    |              |             |
+| `total_cost_micros`        | integer                                                                             | false    |              |             |
+| `total_input_tokens`       | integer                                                                             | false    |              |             |
+| `total_output_tokens`      | integer                                                                             | false    |              |             |
+| `unpriced_request_count`   | integer                                                                             | false    |              |             |
 
 ## codersdk.AIBudgetLimitSource
 

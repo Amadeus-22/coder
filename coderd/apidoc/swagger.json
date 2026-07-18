@@ -1283,6 +1283,65 @@
 				]
 			}
 		},
+		"/api/v2/ai-gateway/cost/users": {
+			"get": {
+				"produces": ["application/json"],
+				"tags": ["Enterprise"],
+				"summary": "List AI Gateway cost by user",
+				"operationId": "list-ai-gateway-cost-by-user",
+				"parameters": [
+					{
+						"type": "string",
+						"description": "Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago.",
+						"name": "start_date",
+						"in": "query"
+					},
+					{
+						"type": "string",
+						"description": "Exclusive upper bound on interception start time (RFC3339). Defaults to now.",
+						"name": "end_date",
+						"in": "query"
+					},
+					{
+						"type": "string",
+						"description": "Restrict the aggregation to a single client, e.g. Coder Agents.",
+						"name": "client",
+						"in": "query"
+					},
+					{
+						"type": "string",
+						"description": "Match usernames and display names, case-insensitively.",
+						"name": "search",
+						"in": "query"
+					},
+					{
+						"type": "integer",
+						"description": "Page limit",
+						"name": "limit",
+						"in": "query"
+					},
+					{
+						"type": "integer",
+						"description": "Page offset",
+						"name": "offset",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/codersdk.AIBridgeCostUsersResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"CoderSessionToken": []
+					}
+				]
+			}
+		},
 		"/api/v2/ai-gateway/keys": {
 			"get": {
 				"produces": ["application/json"],
@@ -8720,6 +8779,54 @@
 				]
 			}
 		},
+		"/api/v2/users/{user}/ai/cost-summary": {
+			"get": {
+				"produces": ["application/json"],
+				"tags": ["Enterprise"],
+				"summary": "Get user AI cost summary",
+				"operationId": "get-user-ai-cost-summary",
+				"parameters": [
+					{
+						"type": "string",
+						"description": "User ID, username, or me",
+						"name": "user",
+						"in": "path",
+						"required": true
+					},
+					{
+						"type": "string",
+						"description": "Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago.",
+						"name": "start_date",
+						"in": "query"
+					},
+					{
+						"type": "string",
+						"description": "Exclusive upper bound on interception start time (RFC3339). Defaults to now.",
+						"name": "end_date",
+						"in": "query"
+					},
+					{
+						"type": "string",
+						"description": "Restrict the aggregation to a single client, e.g. Coder Agents.",
+						"name": "client",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/codersdk.AIBridgeUserCostSummary"
+						}
+					}
+				},
+				"security": [
+					{
+						"CoderSessionToken": []
+					}
+				]
+			}
+		},
 		"/api/v2/users/{user}/ai/spend": {
 			"get": {
 				"produces": ["application/json"],
@@ -13485,6 +13592,129 @@
 				}
 			}
 		},
+		"codersdk.AIBridgeCostChatBreakdown": {
+			"type": "object",
+			"properties": {
+				"chat_id": {
+					"type": "string",
+					"format": "uuid"
+				},
+				"chat_title": {
+					"type": "string"
+				},
+				"request_count": {
+					"type": "integer"
+				},
+				"total_cache_read_tokens": {
+					"type": "integer"
+				},
+				"total_cache_write_tokens": {
+					"type": "integer"
+				},
+				"total_cost_micros": {
+					"type": "integer"
+				},
+				"total_input_tokens": {
+					"type": "integer"
+				},
+				"total_output_tokens": {
+					"type": "integer"
+				},
+				"unpriced_request_count": {
+					"type": "integer"
+				}
+			}
+		},
+		"codersdk.AIBridgeCostModelBreakdown": {
+			"type": "object",
+			"properties": {
+				"model": {
+					"type": "string"
+				},
+				"provider": {
+					"type": "string"
+				},
+				"request_count": {
+					"type": "integer"
+				},
+				"total_cache_read_tokens": {
+					"type": "integer"
+				},
+				"total_cache_write_tokens": {
+					"type": "integer"
+				},
+				"total_cost_micros": {
+					"type": "integer"
+				},
+				"total_input_tokens": {
+					"type": "integer"
+				},
+				"total_output_tokens": {
+					"type": "integer"
+				},
+				"unpriced_request_count": {
+					"description": "UnpricedRequestCount is the number of requests with at least one token\nusage recorded without a computed cost (no price was known for the\nmodel), so TotalCostMicros undercounts their true cost.",
+					"type": "integer"
+				}
+			}
+		},
+		"codersdk.AIBridgeCostUserRollup": {
+			"type": "object",
+			"properties": {
+				"avatar_url": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"request_count": {
+					"type": "integer"
+				},
+				"session_count": {
+					"description": "SessionCount is the number of distinct AI Gateway sessions. For Coder\nAgents traffic each top-level chat is one session.",
+					"type": "integer"
+				},
+				"total_cache_read_tokens": {
+					"type": "integer"
+				},
+				"total_cache_write_tokens": {
+					"type": "integer"
+				},
+				"total_cost_micros": {
+					"type": "integer"
+				},
+				"total_input_tokens": {
+					"type": "integer"
+				},
+				"total_output_tokens": {
+					"type": "integer"
+				},
+				"unpriced_request_count": {
+					"type": "integer"
+				},
+				"user_id": {
+					"type": "string",
+					"format": "uuid"
+				},
+				"username": {
+					"type": "string"
+				}
+			}
+		},
+		"codersdk.AIBridgeCostUsersResponse": {
+			"type": "object",
+			"properties": {
+				"count": {
+					"type": "integer"
+				},
+				"users": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/codersdk.AIBridgeCostUserRollup"
+					}
+				}
+			}
+		},
 		"codersdk.AIBridgeListSessionsResponse": {
 			"type": "object",
 			"properties": {
@@ -13819,6 +14049,55 @@
 				},
 				"tool": {
 					"type": "string"
+				}
+			}
+		},
+		"codersdk.AIBridgeUserCostSummary": {
+			"type": "object",
+			"properties": {
+				"by_chat": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/codersdk.AIBridgeCostChatBreakdown"
+					}
+				},
+				"by_model": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/codersdk.AIBridgeCostModelBreakdown"
+					}
+				},
+				"end_date": {
+					"type": "string",
+					"format": "date-time"
+				},
+				"priced_request_count": {
+					"type": "integer"
+				},
+				"request_count": {
+					"type": "integer"
+				},
+				"start_date": {
+					"type": "string",
+					"format": "date-time"
+				},
+				"total_cache_read_tokens": {
+					"type": "integer"
+				},
+				"total_cache_write_tokens": {
+					"type": "integer"
+				},
+				"total_cost_micros": {
+					"type": "integer"
+				},
+				"total_input_tokens": {
+					"type": "integer"
+				},
+				"total_output_tokens": {
+					"type": "integer"
+				},
+				"unpriced_request_count": {
+					"type": "integer"
 				}
 			}
 		},

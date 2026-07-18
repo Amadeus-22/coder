@@ -312,6 +312,19 @@ func New(ctx context.Context, options *Options) (_ *API, err error) {
 	})
 
 	api.AGPL.APIHandler.Group(func(r chi.Router) {
+		r.Route("/ai-gateway/cost", func(r chi.Router) {
+			// AI cost controls are a paid feature (AI Governance add-on).
+			r.Use(
+				// TODO(AIGOV-443): remove once AI Gateway cost control functionality is stable.
+				httpmw.RequireExperiment(api.AGPL.Experiments, codersdk.ExperimentAIGatewayCostControl),
+				apiKeyMiddleware,
+				api.RequireFeatureMW(codersdk.FeatureAIBridge),
+			)
+			r.Get("/users", api.aiBridgeCostUsers)
+		})
+	})
+
+	api.AGPL.APIHandler.Group(func(r chi.Router) {
 		r.Route("/ai-gateway/keys", func(r chi.Router) {
 			r.Use(
 				apiKeyMiddleware,
@@ -685,6 +698,9 @@ func New(ctx context.Context, options *Options) (_ *API, err error) {
 			})
 			r.Route("/spend", func(r chi.Router) {
 				r.Get("/", api.userAISpendStatus)
+			})
+			r.Route("/cost-summary", func(r chi.Router) {
+				r.Get("/", api.userAICostSummary)
 			})
 		})
 		r.Route("/prebuilds", func(r chi.Router) {

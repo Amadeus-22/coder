@@ -1073,6 +1073,14 @@ func (m queryMetricsStore) FindMatchingPresetID(ctx context.Context, arg databas
 	return r0, r1
 }
 
+func (m queryMetricsStore) GetAIBridgeCostByInitiator(ctx context.Context, arg database.GetAIBridgeCostByInitiatorParams) ([]database.GetAIBridgeCostByInitiatorRow, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetAIBridgeCostByInitiator(ctx, arg)
+	m.queryLatencies.WithLabelValues("GetAIBridgeCostByInitiator").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetAIBridgeCostByInitiator").Inc()
+	return r0, r1
+}
+
 func (m queryMetricsStore) GetAIBridgeInterceptionByID(ctx context.Context, id uuid.UUID) (database.AIBridgeInterception, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetAIBridgeInterceptionByID(ctx, id)
@@ -1110,6 +1118,30 @@ func (m queryMetricsStore) GetAIBridgeToolUsagesByInterceptionID(ctx context.Con
 	r0, r1 := m.s.GetAIBridgeToolUsagesByInterceptionID(ctx, interceptionID)
 	m.queryLatencies.WithLabelValues("GetAIBridgeToolUsagesByInterceptionID").Observe(time.Since(start).Seconds())
 	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetAIBridgeToolUsagesByInterceptionID").Inc()
+	return r0, r1
+}
+
+func (m queryMetricsStore) GetAIBridgeUserCostByChat(ctx context.Context, arg database.GetAIBridgeUserCostByChatParams) ([]database.GetAIBridgeUserCostByChatRow, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetAIBridgeUserCostByChat(ctx, arg)
+	m.queryLatencies.WithLabelValues("GetAIBridgeUserCostByChat").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetAIBridgeUserCostByChat").Inc()
+	return r0, r1
+}
+
+func (m queryMetricsStore) GetAIBridgeUserCostByModel(ctx context.Context, arg database.GetAIBridgeUserCostByModelParams) ([]database.GetAIBridgeUserCostByModelRow, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetAIBridgeUserCostByModel(ctx, arg)
+	m.queryLatencies.WithLabelValues("GetAIBridgeUserCostByModel").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetAIBridgeUserCostByModel").Inc()
+	return r0, r1
+}
+
+func (m queryMetricsStore) GetAIBridgeUserCostSummary(ctx context.Context, arg database.GetAIBridgeUserCostSummaryParams) (database.GetAIBridgeUserCostSummaryRow, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetAIBridgeUserCostSummary(ctx, arg)
+	m.queryLatencies.WithLabelValues("GetAIBridgeUserCostSummary").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetAIBridgeUserCostSummary").Inc()
 	return r0, r1
 }
 

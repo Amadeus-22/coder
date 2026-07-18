@@ -663,3 +663,120 @@ GROUP BY
 LIMIT COALESCE(NULLIF(@limit_::integer, 0), 100)
 OFFSET @offset_
 ;
+
+-- name: GetAIBridgeUserCostSummary :one
+-- Aggregate AI Gateway cost for one initiator within a date range. Cost and
+-- token sums come from recorded token usages; request counts are distinct
+-- interceptions. Unpriced requests have at least one token usage row without
+-- a computed cost (no price was known for the model at recording time).
+SELECT
+	COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+	COUNT(DISTINCT i.id)::bigint AS request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.cost_micros IS NOT NULL)::bigint AS priced_request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+	COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+	COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+	COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+	COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+FROM aibridge_interceptions i
+LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+WHERE i.initiator_id = @initiator_id::uuid
+	AND i.started_at >= @start_date::timestamptz
+	AND i.started_at < @end_date::timestamptz
+	AND (@client::text = '' OR i.client = @client::text);
+
+-- name: GetAIBridgeUserCostByModel :many
+SELECT
+	i.provider,
+	i.model,
+	COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+	COUNT(DISTINCT i.id)::bigint AS request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+	COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+	COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+	COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+	COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+FROM aibridge_interceptions i
+LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+WHERE i.initiator_id = @initiator_id::uuid
+	AND i.started_at >= @start_date::timestamptz
+	AND i.started_at < @end_date::timestamptz
+	AND (@client::text = '' OR i.client = @client::text)
+GROUP BY i.provider, i.model
+ORDER BY total_cost_micros DESC, i.provider ASC, i.model ASC;
+
+-- name: GetAIBridgeUserCostByChat :many
+-- Per-chat AI Gateway cost breakdown for one initiator within a date range.
+-- Coder Agents traffic records the top-level chat ID as the interception
+-- session ID (chatprovider.CoderHeaders), so joining chats on session_id
+-- attributes each request to its chat. The owner check guards against
+-- session-id collisions from other clients. Forked chats roll up under their
+-- root chat, matching how the chat UI groups them.
+WITH chat_costs AS (
+	SELECT
+		COALESCE(c.root_chat_id, c.id) AS chat_id,
+		COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+		COUNT(DISTINCT i.id)::bigint AS request_count,
+		COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+		COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+		COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+		COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+		COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+	FROM aibridge_interceptions i
+	JOIN chats c ON c.id::text = i.session_id AND c.owner_id = i.initiator_id
+	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+	WHERE i.initiator_id = @initiator_id::uuid
+		AND i.started_at >= @start_date::timestamptz
+		AND i.started_at < @end_date::timestamptz
+		AND (@client::text = '' OR i.client = @client::text)
+	GROUP BY COALESCE(c.root_chat_id, c.id)
+)
+SELECT
+	cc.chat_id,
+	COALESCE(rc.title, '')::text AS chat_title,
+	cc.total_cost_micros,
+	cc.request_count,
+	cc.unpriced_request_count,
+	cc.total_input_tokens,
+	cc.total_output_tokens,
+	cc.total_cache_read_tokens,
+	cc.total_cache_write_tokens
+FROM chat_costs cc
+LEFT JOIN chats rc ON rc.id = cc.chat_id
+ORDER BY cc.total_cost_micros DESC, cc.chat_id ASC;
+
+-- name: GetAIBridgeCostByInitiator :many
+WITH initiator_costs AS (
+	SELECT
+		i.initiator_id AS user_id,
+		u.username,
+		u.name,
+		u.avatar_url,
+		COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+		COUNT(DISTINCT i.id)::bigint AS request_count,
+		COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+		COUNT(DISTINCT i.session_id)::bigint AS session_count,
+		COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+		COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+		COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+		COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+	FROM aibridge_interceptions i
+	JOIN users u ON u.id = i.initiator_id
+	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+	WHERE i.started_at >= @start_date::timestamptz
+		AND i.started_at < @end_date::timestamptz
+		AND (@client::text = '' OR i.client = @client::text)
+		AND (
+			@username::text = ''
+			OR u.username ILIKE '%' || @username::text || '%'
+			OR u.name ILIKE '%' || @username::text || '%'
+		)
+	GROUP BY i.initiator_id, u.username, u.name, u.avatar_url
+)
+SELECT
+	ic.*,
+	COUNT(*) OVER()::bigint AS total_count
+FROM initiator_costs ic
+ORDER BY ic.total_cost_micros DESC, ic.username ASC
+LIMIT sqlc.arg('page_limit')::int
+OFFSET sqlc.arg('page_offset')::int;

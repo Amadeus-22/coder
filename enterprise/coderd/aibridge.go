@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -31,9 +32,11 @@ const (
 	maxListSessionsLimit     = 1000
 	maxListModelsLimit       = 1000
 	maxListClientsLimit      = 1000
+	maxCostUsersLimit        = 1000
 	defaultListSessionsLimit = 100
 	defaultListModelsLimit   = 100
 	defaultListClientsLimit  = 100
+	defaultCostUsersLimit    = 100
 	// aiBridgeRateLimitWindow is the fixed duration for rate limiting AI Bridge
 	// requests. This is hardcoded to keep configuration simple.
 	aiBridgeRateLimitWindow              = time.Second
@@ -1110,6 +1113,230 @@ func (api *API) groupMembersAISpend(rw http.ResponseWriter, r *http.Request) {
 	}
 	for _, row := range rows {
 		resp.Members = append(resp.Members, db2sdk.GroupMemberAISpend(row))
+	}
+
+	httpapi.Write(ctx, rw, http.StatusOK, resp)
+}
+
+// parseAIBridgeCostDateRange parses the shared start_date/end_date query
+// parameters, defaulting to the last 30 days. Callers must parse all their
+// other query parameters first: this helper also rejects unknown remaining
+// parameters, then reports failures to the client and returns false.
+func parseAIBridgeCostDateRange(rw http.ResponseWriter, r *http.Request, p *httpapi.QueryParamParser, qp url.Values) (startDate, endDate time.Time, ok bool) {
+	now := time.Now()
+	startDate = p.Time(qp, now.AddDate(0, 0, -30), "start_date", time.RFC3339)
+	endDate = p.Time(qp, now, "end_date", time.RFC3339)
+	p.ErrorExcessParams(qp)
+	if len(p.Errors) > 0 {
+		httpapi.Write(r.Context(), rw, http.StatusBadRequest, codersdk.Response{
+			Message:     "Invalid query parameters.",
+			Validations: p.Errors,
+		})
+		return time.Time{}, time.Time{}, false
+	}
+	return startDate, endDate, true
+}
+
+// @Summary Get user AI cost summary
+// @ID get-user-ai-cost-summary
+// @Security CoderSessionToken
+// @Produce json
+// @Tags Enterprise
+// @Param user path string true "User ID, username, or me"
+// @Param start_date query string false "Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago."
+// @Param end_date query string false "Exclusive upper bound on interception start time (RFC3339). Defaults to now."
+// @Param client query string false "Restrict the aggregation to a single client, e.g. Coder Agents."
+// @Success 200 {object} codersdk.AIBridgeUserCostSummary
+// @Router /api/v2/users/{user}/ai/cost-summary [get]
+func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	user := httpmw.UserParam(r)
+
+	qp := r.URL.Query()
+	p := httpapi.NewQueryParamParser()
+	client := p.String(qp, "", "client")
+	startDate, endDate, ok := parseAIBridgeCostDateRange(rw, r, p, qp)
+	if !ok {
+		return
+	}
+
+	summary, err := api.Database.GetAIBridgeUserCostSummary(ctx, database.GetAIBridgeUserCostSummaryParams{
+		InitiatorID: user.ID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Client:      client,
+	})
+	if err != nil {
+		if dbauthz.IsNotAuthorizedError(err) {
+			httpapi.Forbidden(rw)
+			return
+		}
+		httpapi.InternalServerError(rw, err)
+		return
+	}
+
+	byModel, err := api.Database.GetAIBridgeUserCostByModel(ctx, database.GetAIBridgeUserCostByModelParams{
+		InitiatorID: user.ID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Client:      client,
+	})
+	if err != nil {
+		if dbauthz.IsNotAuthorizedError(err) {
+			httpapi.Forbidden(rw)
+			return
+		}
+		httpapi.InternalServerError(rw, err)
+		return
+	}
+
+	byChat, err := api.Database.GetAIBridgeUserCostByChat(ctx, database.GetAIBridgeUserCostByChatParams{
+		InitiatorID: user.ID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Client:      client,
+	})
+	if err != nil {
+		if dbauthz.IsNotAuthorizedError(err) {
+			httpapi.Forbidden(rw)
+			return
+		}
+		httpapi.InternalServerError(rw, err)
+		return
+	}
+
+	resp := codersdk.AIBridgeUserCostSummary{
+		StartDate:            startDate,
+		EndDate:              endDate,
+		TotalCostMicros:      summary.TotalCostMicros,
+		RequestCount:         summary.RequestCount,
+		PricedRequestCount:   summary.PricedRequestCount,
+		UnpricedRequestCount: summary.UnpricedRequestCount,
+		AIBridgeCostTokenTotals: codersdk.AIBridgeCostTokenTotals{
+			TotalInputTokens:      summary.TotalInputTokens,
+			TotalOutputTokens:     summary.TotalOutputTokens,
+			TotalCacheReadTokens:  summary.TotalCacheReadTokens,
+			TotalCacheWriteTokens: summary.TotalCacheWriteTokens,
+		},
+		ByModel: make([]codersdk.AIBridgeCostModelBreakdown, 0, len(byModel)),
+		ByChat:  make([]codersdk.AIBridgeCostChatBreakdown, 0, len(byChat)),
+	}
+	for _, m := range byModel {
+		resp.ByModel = append(resp.ByModel, codersdk.AIBridgeCostModelBreakdown{
+			Provider:             m.Provider,
+			Model:                m.Model,
+			TotalCostMicros:      m.TotalCostMicros,
+			RequestCount:         m.RequestCount,
+			UnpricedRequestCount: m.UnpricedRequestCount,
+			AIBridgeCostTokenTotals: codersdk.AIBridgeCostTokenTotals{
+				TotalInputTokens:      m.TotalInputTokens,
+				TotalOutputTokens:     m.TotalOutputTokens,
+				TotalCacheReadTokens:  m.TotalCacheReadTokens,
+				TotalCacheWriteTokens: m.TotalCacheWriteTokens,
+			},
+		})
+	}
+	for _, c := range byChat {
+		resp.ByChat = append(resp.ByChat, codersdk.AIBridgeCostChatBreakdown{
+			ChatID:               c.ChatID,
+			ChatTitle:            c.ChatTitle,
+			TotalCostMicros:      c.TotalCostMicros,
+			RequestCount:         c.RequestCount,
+			UnpricedRequestCount: c.UnpricedRequestCount,
+			AIBridgeCostTokenTotals: codersdk.AIBridgeCostTokenTotals{
+				TotalInputTokens:      c.TotalInputTokens,
+				TotalOutputTokens:     c.TotalOutputTokens,
+				TotalCacheReadTokens:  c.TotalCacheReadTokens,
+				TotalCacheWriteTokens: c.TotalCacheWriteTokens,
+			},
+		})
+	}
+
+	httpapi.Write(ctx, rw, http.StatusOK, resp)
+}
+
+// aiBridgeCostUsers requires permission to read AI Gateway interceptions.
+//
+// @Summary List AI Gateway cost by user
+// @ID list-ai-gateway-cost-by-user
+// @Security CoderSessionToken
+// @Produce json
+// @Tags Enterprise
+// @Param start_date query string false "Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago."
+// @Param end_date query string false "Exclusive upper bound on interception start time (RFC3339). Defaults to now."
+// @Param client query string false "Restrict the aggregation to a single client, e.g. Coder Agents."
+// @Param search query string false "Match usernames and display names, case-insensitively."
+// @Param limit query int false "Page limit"
+// @Param offset query int false "Page offset"
+// @Success 200 {object} codersdk.AIBridgeCostUsersResponse
+// @Router /api/v2/ai-gateway/cost/users [get]
+func (api *API) aiBridgeCostUsers(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	page, ok := coderd.ParsePagination(rw, r)
+	if !ok {
+		return
+	}
+	if page.Limit <= 0 {
+		page.Limit = defaultCostUsersLimit
+	}
+	if page.Limit > maxCostUsersLimit {
+		page.Limit = maxCostUsersLimit
+	}
+
+	qp := r.URL.Query()
+	// Pagination params are parsed by ParsePagination above.
+	qp.Del("limit")
+	qp.Del("offset")
+	qp.Del("after_id")
+	p := httpapi.NewQueryParamParser()
+	client := p.String(qp, "", "client")
+	search := p.String(qp, "", "search")
+	startDate, endDate, ok := parseAIBridgeCostDateRange(rw, r, p, qp)
+	if !ok {
+		return
+	}
+
+	rows, err := api.Database.GetAIBridgeCostByInitiator(ctx, database.GetAIBridgeCostByInitiatorParams{
+		StartDate: startDate,
+		EndDate:   endDate,
+		Client:    client,
+		Username:  search,
+		// #nosec G115 - Pagination limits are clamped to small values above.
+		PageLimit: int32(page.Limit),
+		// #nosec G115 - Pagination offsets are validated non-negative by ParsePagination.
+		PageOffset: int32(page.Offset),
+	})
+	if err != nil {
+		if dbauthz.IsNotAuthorizedError(err) {
+			httpapi.Forbidden(rw)
+			return
+		}
+		httpapi.InternalServerError(rw, err)
+		return
+	}
+
+	resp := codersdk.AIBridgeCostUsersResponse{
+		Users: make([]codersdk.AIBridgeCostUserRollup, 0, len(rows)),
+	}
+	for _, row := range rows {
+		resp.Count = row.TotalCount
+		resp.Users = append(resp.Users, codersdk.AIBridgeCostUserRollup{
+			UserID:               row.UserID,
+			Username:             row.Username,
+			Name:                 row.Name,
+			AvatarURL:            row.AvatarURL,
+			TotalCostMicros:      row.TotalCostMicros,
+			RequestCount:         row.RequestCount,
+			UnpricedRequestCount: row.UnpricedRequestCount,
+			SessionCount:         row.SessionCount,
+			AIBridgeCostTokenTotals: codersdk.AIBridgeCostTokenTotals{
+				TotalInputTokens:      row.TotalInputTokens,
+				TotalOutputTokens:     row.TotalOutputTokens,
+				TotalCacheReadTokens:  row.TotalCacheReadTokens,
+				TotalCacheWriteTokens: row.TotalCacheWriteTokens,
+			},
+		})
 	}
 
 	httpapi.Write(ctx, rw, http.StatusOK, resp)

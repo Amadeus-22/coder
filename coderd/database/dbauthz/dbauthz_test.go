@@ -6789,6 +6789,56 @@ func (s *MethodTestSuite) TestAIBridge() {
 		check.Args().Asserts(a, policy.ActionRead, b, policy.ActionRead).Returns([]database.AIBridgeInterception{a, b})
 	}))
 
+	s.Run("GetAIBridgeCostByInitiator", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
+		arg := database.GetAIBridgeCostByInitiatorParams{
+			StartDate: time.Now().Add(-24 * time.Hour),
+			EndDate:   time.Now(),
+			PageLimit: 10,
+		}
+		row := testutil.Fake(s.T(), faker, database.GetAIBridgeCostByInitiatorRow{})
+		db.EXPECT().GetAIBridgeCostByInitiator(gomock.Any(), arg).Return([]database.GetAIBridgeCostByInitiatorRow{row}, nil).AnyTimes()
+		check.Args(arg).Asserts(rbac.ResourceAibridgeInterception, policy.ActionRead).Returns([]database.GetAIBridgeCostByInitiatorRow{row})
+	}))
+
+	s.Run("GetAIBridgeUserCostSummary", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
+		user := testutil.Fake(s.T(), faker, database.User{})
+		arg := database.GetAIBridgeUserCostSummaryParams{
+			InitiatorID: user.ID,
+			StartDate:   time.Now().Add(-24 * time.Hour),
+			EndDate:     time.Now(),
+		}
+		row := testutil.Fake(s.T(), faker, database.GetAIBridgeUserCostSummaryRow{})
+		db.EXPECT().GetUserByID(gomock.Any(), user.ID).Return(user, nil).AnyTimes()
+		db.EXPECT().GetAIBridgeUserCostSummary(gomock.Any(), arg).Return(row, nil).AnyTimes()
+		check.Args(arg).Asserts(user, policy.ActionRead).Returns(row)
+	}))
+
+	s.Run("GetAIBridgeUserCostByModel", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
+		user := testutil.Fake(s.T(), faker, database.User{})
+		arg := database.GetAIBridgeUserCostByModelParams{
+			InitiatorID: user.ID,
+			StartDate:   time.Now().Add(-24 * time.Hour),
+			EndDate:     time.Now(),
+		}
+		row := testutil.Fake(s.T(), faker, database.GetAIBridgeUserCostByModelRow{})
+		db.EXPECT().GetUserByID(gomock.Any(), user.ID).Return(user, nil).AnyTimes()
+		db.EXPECT().GetAIBridgeUserCostByModel(gomock.Any(), arg).Return([]database.GetAIBridgeUserCostByModelRow{row}, nil).AnyTimes()
+		check.Args(arg).Asserts(user, policy.ActionRead).Returns([]database.GetAIBridgeUserCostByModelRow{row})
+	}))
+
+	s.Run("GetAIBridgeUserCostByChat", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
+		user := testutil.Fake(s.T(), faker, database.User{})
+		arg := database.GetAIBridgeUserCostByChatParams{
+			InitiatorID: user.ID,
+			StartDate:   time.Now().Add(-24 * time.Hour),
+			EndDate:     time.Now(),
+		}
+		row := testutil.Fake(s.T(), faker, database.GetAIBridgeUserCostByChatRow{})
+		db.EXPECT().GetUserByID(gomock.Any(), user.ID).Return(user, nil).AnyTimes()
+		db.EXPECT().GetAIBridgeUserCostByChat(gomock.Any(), arg).Return([]database.GetAIBridgeUserCostByChatRow{row}, nil).AnyTimes()
+		check.Args(arg).Asserts(user, policy.ActionRead).Returns([]database.GetAIBridgeUserCostByChatRow{row})
+	}))
+
 	s.Run("GetAIBridgeTokenUsagesByInterceptionID", s.Mocked(func(db *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
 		intID := uuid.UUID{2}
 		intc := testutil.Fake(s.T(), faker, database.AIBridgeInterception{ID: intID})

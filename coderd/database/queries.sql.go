@@ -1156,6 +1156,112 @@ func (q *sqlQuerier) DeleteOldAIBridgeRecords(ctx context.Context, beforeTime ti
 	return total_deleted, err
 }
 
+const getAIBridgeCostByInitiator = `-- name: GetAIBridgeCostByInitiator :many
+WITH initiator_costs AS (
+	SELECT
+		i.initiator_id AS user_id,
+		u.username,
+		u.name,
+		u.avatar_url,
+		COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+		COUNT(DISTINCT i.id)::bigint AS request_count,
+		COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+		COUNT(DISTINCT i.session_id)::bigint AS session_count,
+		COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+		COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+		COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+		COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+	FROM aibridge_interceptions i
+	JOIN users u ON u.id = i.initiator_id
+	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+	WHERE i.started_at >= $3::timestamptz
+		AND i.started_at < $4::timestamptz
+		AND ($5::text = '' OR i.client = $5::text)
+		AND (
+			$6::text = ''
+			OR u.username ILIKE '%' || $6::text || '%'
+			OR u.name ILIKE '%' || $6::text || '%'
+		)
+	GROUP BY i.initiator_id, u.username, u.name, u.avatar_url
+)
+SELECT
+	ic.user_id, ic.username, ic.name, ic.avatar_url, ic.total_cost_micros, ic.request_count, ic.unpriced_request_count, ic.session_count, ic.total_input_tokens, ic.total_output_tokens, ic.total_cache_read_tokens, ic.total_cache_write_tokens,
+	COUNT(*) OVER()::bigint AS total_count
+FROM initiator_costs ic
+ORDER BY ic.total_cost_micros DESC, ic.username ASC
+LIMIT $2::int
+OFFSET $1::int
+`
+
+type GetAIBridgeCostByInitiatorParams struct {
+	PageOffset int32     `db:"page_offset" json:"page_offset"`
+	PageLimit  int32     `db:"page_limit" json:"page_limit"`
+	StartDate  time.Time `db:"start_date" json:"start_date"`
+	EndDate    time.Time `db:"end_date" json:"end_date"`
+	Client     string    `db:"client" json:"client"`
+	Username   string    `db:"username" json:"username"`
+}
+
+type GetAIBridgeCostByInitiatorRow struct {
+	UserID                uuid.UUID `db:"user_id" json:"user_id"`
+	Username              string    `db:"username" json:"username"`
+	Name                  string    `db:"name" json:"name"`
+	AvatarURL             string    `db:"avatar_url" json:"avatar_url"`
+	TotalCostMicros       int64     `db:"total_cost_micros" json:"total_cost_micros"`
+	RequestCount          int64     `db:"request_count" json:"request_count"`
+	UnpricedRequestCount  int64     `db:"unpriced_request_count" json:"unpriced_request_count"`
+	SessionCount          int64     `db:"session_count" json:"session_count"`
+	TotalInputTokens      int64     `db:"total_input_tokens" json:"total_input_tokens"`
+	TotalOutputTokens     int64     `db:"total_output_tokens" json:"total_output_tokens"`
+	TotalCacheReadTokens  int64     `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64     `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
+	TotalCount            int64     `db:"total_count" json:"total_count"`
+}
+
+func (q *sqlQuerier) GetAIBridgeCostByInitiator(ctx context.Context, arg GetAIBridgeCostByInitiatorParams) ([]GetAIBridgeCostByInitiatorRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAIBridgeCostByInitiator,
+		arg.PageOffset,
+		arg.PageLimit,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Client,
+		arg.Username,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAIBridgeCostByInitiatorRow
+	for rows.Next() {
+		var i GetAIBridgeCostByInitiatorRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Username,
+			&i.Name,
+			&i.AvatarURL,
+			&i.TotalCostMicros,
+			&i.RequestCount,
+			&i.UnpricedRequestCount,
+			&i.SessionCount,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAIBridgeInterceptionByID = `-- name: GetAIBridgeInterceptionByID :one
 SELECT
 	id, initiator_id, provider, model, started_at, metadata, ended_at, api_key_id, client, thread_parent_id, thread_root_id, client_session_id, session_id, provider_name, credential_kind, credential_hint, agent_firewall_session_id, agent_firewall_sequence_number, error_type, error_message
@@ -1367,6 +1473,243 @@ func (q *sqlQuerier) GetAIBridgeToolUsagesByInterceptionID(ctx context.Context, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const getAIBridgeUserCostByChat = `-- name: GetAIBridgeUserCostByChat :many
+WITH chat_costs AS (
+	SELECT
+		COALESCE(c.root_chat_id, c.id) AS chat_id,
+		COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+		COUNT(DISTINCT i.id)::bigint AS request_count,
+		COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+		COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+		COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+		COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+		COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+	FROM aibridge_interceptions i
+	JOIN chats c ON c.id::text = i.session_id AND c.owner_id = i.initiator_id
+	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+	WHERE i.initiator_id = $1::uuid
+		AND i.started_at >= $2::timestamptz
+		AND i.started_at < $3::timestamptz
+		AND ($4::text = '' OR i.client = $4::text)
+	GROUP BY COALESCE(c.root_chat_id, c.id)
+)
+SELECT
+	cc.chat_id,
+	COALESCE(rc.title, '')::text AS chat_title,
+	cc.total_cost_micros,
+	cc.request_count,
+	cc.unpriced_request_count,
+	cc.total_input_tokens,
+	cc.total_output_tokens,
+	cc.total_cache_read_tokens,
+	cc.total_cache_write_tokens
+FROM chat_costs cc
+LEFT JOIN chats rc ON rc.id = cc.chat_id
+ORDER BY cc.total_cost_micros DESC, cc.chat_id ASC
+`
+
+type GetAIBridgeUserCostByChatParams struct {
+	InitiatorID uuid.UUID `db:"initiator_id" json:"initiator_id"`
+	StartDate   time.Time `db:"start_date" json:"start_date"`
+	EndDate     time.Time `db:"end_date" json:"end_date"`
+	Client      string    `db:"client" json:"client"`
+}
+
+type GetAIBridgeUserCostByChatRow struct {
+	ChatID                uuid.UUID `db:"chat_id" json:"chat_id"`
+	ChatTitle             string    `db:"chat_title" json:"chat_title"`
+	TotalCostMicros       int64     `db:"total_cost_micros" json:"total_cost_micros"`
+	RequestCount          int64     `db:"request_count" json:"request_count"`
+	UnpricedRequestCount  int64     `db:"unpriced_request_count" json:"unpriced_request_count"`
+	TotalInputTokens      int64     `db:"total_input_tokens" json:"total_input_tokens"`
+	TotalOutputTokens     int64     `db:"total_output_tokens" json:"total_output_tokens"`
+	TotalCacheReadTokens  int64     `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64     `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
+}
+
+// Per-chat AI Gateway cost breakdown for one initiator within a date range.
+// Coder Agents traffic records the top-level chat ID as the interception
+// session ID (chatprovider.CoderHeaders), so joining chats on session_id
+// attributes each request to its chat. The owner check guards against
+// session-id collisions from other clients. Forked chats roll up under their
+// root chat, matching how the chat UI groups them.
+func (q *sqlQuerier) GetAIBridgeUserCostByChat(ctx context.Context, arg GetAIBridgeUserCostByChatParams) ([]GetAIBridgeUserCostByChatRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAIBridgeUserCostByChat,
+		arg.InitiatorID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Client,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAIBridgeUserCostByChatRow
+	for rows.Next() {
+		var i GetAIBridgeUserCostByChatRow
+		if err := rows.Scan(
+			&i.ChatID,
+			&i.ChatTitle,
+			&i.TotalCostMicros,
+			&i.RequestCount,
+			&i.UnpricedRequestCount,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAIBridgeUserCostByModel = `-- name: GetAIBridgeUserCostByModel :many
+SELECT
+	i.provider,
+	i.model,
+	COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+	COUNT(DISTINCT i.id)::bigint AS request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+	COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+	COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+	COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+	COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+FROM aibridge_interceptions i
+LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+WHERE i.initiator_id = $1::uuid
+	AND i.started_at >= $2::timestamptz
+	AND i.started_at < $3::timestamptz
+	AND ($4::text = '' OR i.client = $4::text)
+GROUP BY i.provider, i.model
+ORDER BY total_cost_micros DESC, i.provider ASC, i.model ASC
+`
+
+type GetAIBridgeUserCostByModelParams struct {
+	InitiatorID uuid.UUID `db:"initiator_id" json:"initiator_id"`
+	StartDate   time.Time `db:"start_date" json:"start_date"`
+	EndDate     time.Time `db:"end_date" json:"end_date"`
+	Client      string    `db:"client" json:"client"`
+}
+
+type GetAIBridgeUserCostByModelRow struct {
+	Provider              string `db:"provider" json:"provider"`
+	Model                 string `db:"model" json:"model"`
+	TotalCostMicros       int64  `db:"total_cost_micros" json:"total_cost_micros"`
+	RequestCount          int64  `db:"request_count" json:"request_count"`
+	UnpricedRequestCount  int64  `db:"unpriced_request_count" json:"unpriced_request_count"`
+	TotalInputTokens      int64  `db:"total_input_tokens" json:"total_input_tokens"`
+	TotalOutputTokens     int64  `db:"total_output_tokens" json:"total_output_tokens"`
+	TotalCacheReadTokens  int64  `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64  `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
+}
+
+func (q *sqlQuerier) GetAIBridgeUserCostByModel(ctx context.Context, arg GetAIBridgeUserCostByModelParams) ([]GetAIBridgeUserCostByModelRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAIBridgeUserCostByModel,
+		arg.InitiatorID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Client,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAIBridgeUserCostByModelRow
+	for rows.Next() {
+		var i GetAIBridgeUserCostByModelRow
+		if err := rows.Scan(
+			&i.Provider,
+			&i.Model,
+			&i.TotalCostMicros,
+			&i.RequestCount,
+			&i.UnpricedRequestCount,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAIBridgeUserCostSummary = `-- name: GetAIBridgeUserCostSummary :one
+SELECT
+	COALESCE(SUM(tu.cost_micros), 0)::bigint AS total_cost_micros,
+	COUNT(DISTINCT i.id)::bigint AS request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.cost_micros IS NOT NULL)::bigint AS priced_request_count,
+	COUNT(DISTINCT i.id) FILTER (WHERE tu.id IS NOT NULL AND tu.cost_micros IS NULL)::bigint AS unpriced_request_count,
+	COALESCE(SUM(tu.input_tokens), 0)::bigint AS total_input_tokens,
+	COALESCE(SUM(tu.output_tokens), 0)::bigint AS total_output_tokens,
+	COALESCE(SUM(tu.cache_read_input_tokens), 0)::bigint AS total_cache_read_tokens,
+	COALESCE(SUM(tu.cache_write_input_tokens), 0)::bigint AS total_cache_write_tokens
+FROM aibridge_interceptions i
+LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
+WHERE i.initiator_id = $1::uuid
+	AND i.started_at >= $2::timestamptz
+	AND i.started_at < $3::timestamptz
+	AND ($4::text = '' OR i.client = $4::text)
+`
+
+type GetAIBridgeUserCostSummaryParams struct {
+	InitiatorID uuid.UUID `db:"initiator_id" json:"initiator_id"`
+	StartDate   time.Time `db:"start_date" json:"start_date"`
+	EndDate     time.Time `db:"end_date" json:"end_date"`
+	Client      string    `db:"client" json:"client"`
+}
+
+type GetAIBridgeUserCostSummaryRow struct {
+	TotalCostMicros       int64 `db:"total_cost_micros" json:"total_cost_micros"`
+	RequestCount          int64 `db:"request_count" json:"request_count"`
+	PricedRequestCount    int64 `db:"priced_request_count" json:"priced_request_count"`
+	UnpricedRequestCount  int64 `db:"unpriced_request_count" json:"unpriced_request_count"`
+	TotalInputTokens      int64 `db:"total_input_tokens" json:"total_input_tokens"`
+	TotalOutputTokens     int64 `db:"total_output_tokens" json:"total_output_tokens"`
+	TotalCacheReadTokens  int64 `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64 `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
+}
+
+// Aggregate AI Gateway cost for one initiator within a date range. Cost and
+// token sums come from recorded token usages; request counts are distinct
+// interceptions. Unpriced requests have at least one token usage row without
+// a computed cost (no price was known for the model at recording time).
+func (q *sqlQuerier) GetAIBridgeUserCostSummary(ctx context.Context, arg GetAIBridgeUserCostSummaryParams) (GetAIBridgeUserCostSummaryRow, error) {
+	row := q.db.QueryRowContext(ctx, getAIBridgeUserCostSummary,
+		arg.InitiatorID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.Client,
+	)
+	var i GetAIBridgeUserCostSummaryRow
+	err := row.Scan(
+		&i.TotalCostMicros,
+		&i.RequestCount,
+		&i.PricedRequestCount,
+		&i.UnpricedRequestCount,
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.TotalCacheReadTokens,
+		&i.TotalCacheWriteTokens,
+	)
+	return i, err
 }
 
 const getAIBridgeUserPromptsByInterceptionID = `-- name: GetAIBridgeUserPromptsByInterceptionID :many

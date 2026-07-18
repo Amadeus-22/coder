@@ -570,3 +570,161 @@ func (c *Client) GroupMembersAISpend(ctx context.Context, group uuid.UUID, userI
 	var resp GroupMembersAISpend
 	return resp, json.NewDecoder(res.Body).Decode(&resp)
 }
+
+// AIBridgeCostTokenTotals are token sums over the token usages recorded for
+// the matched interceptions.
+type AIBridgeCostTokenTotals struct {
+	TotalInputTokens      int64 `json:"total_input_tokens"`
+	TotalOutputTokens     int64 `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64 `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64 `json:"total_cache_write_tokens"`
+}
+
+// AIBridgeCostModelBreakdown is the AI Gateway cost attributed to a single
+// (provider, model) pair.
+type AIBridgeCostModelBreakdown struct {
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	TotalCostMicros int64  `json:"total_cost_micros"`
+	RequestCount    int64  `json:"request_count"`
+	// UnpricedRequestCount is the number of requests with at least one token
+	// usage recorded without a computed cost (no price was known for the
+	// model), so TotalCostMicros undercounts their true cost.
+	UnpricedRequestCount int64 `json:"unpriced_request_count"`
+	AIBridgeCostTokenTotals
+}
+
+// AIBridgeCostChatBreakdown is the AI Gateway cost attributed to a single
+// top-level chat. Delegated (child) chats report their parent chat as the
+// gateway session, and forked chats roll up under their root chat.
+type AIBridgeCostChatBreakdown struct {
+	ChatID               uuid.UUID `json:"chat_id" format:"uuid"`
+	ChatTitle            string    `json:"chat_title"`
+	TotalCostMicros      int64     `json:"total_cost_micros"`
+	RequestCount         int64     `json:"request_count"`
+	UnpricedRequestCount int64     `json:"unpriced_request_count"`
+	AIBridgeCostTokenTotals
+}
+
+// AIBridgeUserCostSummary is a user's AI Gateway cost over a date range,
+// aggregated from intercepted requests, with per-model and per-chat
+// breakdowns.
+type AIBridgeUserCostSummary struct {
+	StartDate            time.Time `json:"start_date" format:"date-time"`
+	EndDate              time.Time `json:"end_date" format:"date-time"`
+	TotalCostMicros      int64     `json:"total_cost_micros"`
+	RequestCount         int64     `json:"request_count"`
+	PricedRequestCount   int64     `json:"priced_request_count"`
+	UnpricedRequestCount int64     `json:"unpriced_request_count"`
+	AIBridgeCostTokenTotals
+	ByModel []AIBridgeCostModelBreakdown `json:"by_model"`
+	ByChat  []AIBridgeCostChatBreakdown  `json:"by_chat"`
+}
+
+// AIBridgeCostUserRollup is one user's AI Gateway cost rollup within a
+// deployment-wide listing.
+type AIBridgeCostUserRollup struct {
+	UserID               uuid.UUID `json:"user_id" format:"uuid"`
+	Username             string    `json:"username"`
+	Name                 string    `json:"name"`
+	AvatarURL            string    `json:"avatar_url"`
+	TotalCostMicros      int64     `json:"total_cost_micros"`
+	RequestCount         int64     `json:"request_count"`
+	UnpricedRequestCount int64     `json:"unpriced_request_count"`
+	// SessionCount is the number of distinct AI Gateway sessions. For Coder
+	// Agents traffic each top-level chat is one session.
+	SessionCount int64 `json:"session_count"`
+	AIBridgeCostTokenTotals
+}
+
+type AIBridgeCostUsersResponse struct {
+	Users []AIBridgeCostUserRollup `json:"users"`
+	Count int64                    `json:"count"`
+}
+
+// AIBridgeCostFilter filters AI Gateway cost aggregations. The zero value
+// covers the last 30 days across all clients.
+type AIBridgeCostFilter struct {
+	// StartDate is the inclusive lower bound on interception start time.
+	StartDate time.Time `json:"start_date,omitempty" format:"date-time"`
+	// EndDate is the exclusive upper bound on interception start time.
+	EndDate time.Time `json:"end_date,omitempty" format:"date-time"`
+	// Client restricts the aggregation to a single client, e.g.
+	// "Coder Agents". Empty includes all clients.
+	Client string `json:"client,omitempty"`
+}
+
+func (f AIBridgeCostFilter) asRequestOption() RequestOption {
+	return func(r *http.Request) {
+		q := r.URL.Query()
+		if !f.StartDate.IsZero() {
+			q.Set("start_date", f.StartDate.Format(time.RFC3339))
+		}
+		if !f.EndDate.IsZero() {
+			q.Set("end_date", f.EndDate.Format(time.RFC3339))
+		}
+		if f.Client != "" {
+			q.Set("client", f.Client)
+		}
+		r.URL.RawQuery = q.Encode()
+	}
+}
+
+// UserAICostSummary returns the user's AI Gateway cost summary over the
+// filter's date range.
+func (c *Client) UserAICostSummary(ctx context.Context, user uuid.UUID, filter AIBridgeCostFilter) (AIBridgeUserCostSummary, error) {
+	res, err := c.Request(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v2/users/%s/ai/cost-summary", user.String()),
+		nil,
+		filter.asRequestOption(),
+	)
+	if err != nil {
+		return AIBridgeUserCostSummary{}, xerrors.Errorf("make request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return AIBridgeUserCostSummary{}, ReadBodyAsError(res)
+	}
+	var resp AIBridgeUserCostSummary
+	return resp, json.NewDecoder(res.Body).Decode(&resp)
+}
+
+// AIBridgeCostUsersFilter filters the deployment-wide per-user AI Gateway
+// cost listing.
+type AIBridgeCostUsersFilter struct {
+	AIBridgeCostFilter
+	// Search matches usernames and display names, case-insensitively.
+	Search     string `json:"search,omitempty"`
+	Pagination Pagination
+}
+
+// AIBridgeCostUsers returns a page of per-user AI Gateway cost rollups over
+// the filter's date range. Requires permission to read AI Gateway
+// interceptions.
+func (c *Client) AIBridgeCostUsers(ctx context.Context, filter AIBridgeCostUsersFilter) (AIBridgeCostUsersResponse, error) {
+	res, err := c.Request(ctx, http.MethodGet,
+		"/api/v2/ai-gateway/cost/users",
+		nil,
+		filter.AIBridgeCostFilter.asRequestOption(),
+		func(r *http.Request) {
+			if filter.Search == "" {
+				return
+			}
+			q := r.URL.Query()
+			q.Set("search", filter.Search)
+			r.URL.RawQuery = q.Encode()
+		},
+		filter.Pagination.asRequestOption(),
+	)
+	if err != nil {
+		return AIBridgeCostUsersResponse{}, xerrors.Errorf("make request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return AIBridgeCostUsersResponse{}, ReadBodyAsError(res)
+	}
+	var resp AIBridgeCostUsersResponse
+	return resp, json.NewDecoder(res.Body).Decode(&resp)
+}

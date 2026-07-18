@@ -178,6 +178,64 @@ curl -X GET http://coder-server:8080/api/v2/agent-firewall/sessions/{id}/logs \
 
 To perform this operation, you must be authenticated. [Learn more](authentication.md).
 
+## List AI Gateway cost by user
+
+### Code samples
+
+```sh
+# Example request using curl
+curl -X GET http://coder-server:8080/api/v2/ai-gateway/cost/users \
+  -H 'Accept: application/json' \
+  -H 'Coder-Session-Token: API_KEY'
+```
+
+`GET /api/v2/ai-gateway/cost/users`
+
+### Parameters
+
+| Name         | In    | Type    | Required | Description                                                                          |
+|--------------|-------|---------|----------|--------------------------------------------------------------------------------------|
+| `start_date` | query | string  | false    | Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago. |
+| `end_date`   | query | string  | false    | Exclusive upper bound on interception start time (RFC3339). Defaults to now.         |
+| `client`     | query | string  | false    | Restrict the aggregation to a single client, e.g. Coder Agents.                      |
+| `search`     | query | string  | false    | Match usernames and display names, case-insensitively.                               |
+| `limit`      | query | integer | false    | Page limit                                                                           |
+| `offset`     | query | integer | false    | Page offset                                                                          |
+
+### Example responses
+
+> 200 Response
+
+```json
+{
+  "count": 0,
+  "users": [
+    {
+      "avatar_url": "string",
+      "name": "string",
+      "request_count": 0,
+      "session_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0,
+      "user_id": "a169451c-8525-4352-b8ca-070dd449a1a5",
+      "username": "string"
+    }
+  ]
+}
+```
+
+### Responses
+
+| Status | Meaning                                                 | Description | Schema                                                                             |
+|--------|---------------------------------------------------------|-------------|------------------------------------------------------------------------------------|
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [codersdk.AIBridgeCostUsersResponse](schemas.md#codersdkaibridgecostusersresponse) |
+
+To perform this operation, you must be authenticated. [Learn more](authentication.md).
+
 ## List AI Gateway keys
 
 ### Code samples
@@ -3933,6 +3991,81 @@ curl -X DELETE http://coder-server:8080/api/v2/users/{user}/ai/budget \
 | Status | Meaning                                                         | Description | Schema |
 |--------|-----------------------------------------------------------------|-------------|--------|
 | 204    | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | No Content  |        |
+
+To perform this operation, you must be authenticated. [Learn more](authentication.md).
+
+## Get user AI cost summary
+
+### Code samples
+
+```sh
+# Example request using curl
+curl -X GET http://coder-server:8080/api/v2/users/{user}/ai/cost-summary \
+  -H 'Accept: application/json' \
+  -H 'Coder-Session-Token: API_KEY'
+```
+
+`GET /api/v2/users/{user}/ai/cost-summary`
+
+### Parameters
+
+| Name         | In    | Type   | Required | Description                                                                          |
+|--------------|-------|--------|----------|--------------------------------------------------------------------------------------|
+| `user`       | path  | string | true     | User ID, username, or me                                                             |
+| `start_date` | query | string | false    | Inclusive lower bound on interception start time (RFC3339). Defaults to 30 days ago. |
+| `end_date`   | query | string | false    | Exclusive upper bound on interception start time (RFC3339). Defaults to now.         |
+| `client`     | query | string | false    | Restrict the aggregation to a single client, e.g. Coder Agents.                      |
+
+### Example responses
+
+> 200 Response
+
+```json
+{
+  "by_chat": [
+    {
+      "chat_id": "efc9fe20-a1e5-4a8c-9c48-f1b30c1e4f86",
+      "chat_title": "string",
+      "request_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0
+    }
+  ],
+  "by_model": [
+    {
+      "model": "string",
+      "provider": "string",
+      "request_count": 0,
+      "total_cache_read_tokens": 0,
+      "total_cache_write_tokens": 0,
+      "total_cost_micros": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "unpriced_request_count": 0
+    }
+  ],
+  "end_date": "2019-08-24T14:15:22Z",
+  "priced_request_count": 0,
+  "request_count": 0,
+  "start_date": "2019-08-24T14:15:22Z",
+  "total_cache_read_tokens": 0,
+  "total_cache_write_tokens": 0,
+  "total_cost_micros": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "unpriced_request_count": 0
+}
+```
+
+### Responses
+
+| Status | Meaning                                                 | Description | Schema                                                                         |
+|--------|---------------------------------------------------------|-------------|--------------------------------------------------------------------------------|
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [codersdk.AIBridgeUserCostSummary](schemas.md#codersdkaibridgeusercostsummary) |
 
 To perform this operation, you must be authenticated. [Learn more](authentication.md).
 

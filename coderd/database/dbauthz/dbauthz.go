@@ -2755,6 +2755,13 @@ func (q *querier) FindMatchingPresetID(ctx context.Context, arg database.FindMat
 	return q.db.FindMatchingPresetID(ctx, arg)
 }
 
+func (q *querier) GetAIBridgeCostByInitiator(ctx context.Context, arg database.GetAIBridgeCostByInitiatorParams) ([]database.GetAIBridgeCostByInitiatorRow, error) {
+	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceAibridgeInterception); err != nil {
+		return nil, err
+	}
+	return q.db.GetAIBridgeCostByInitiator(ctx, arg)
+}
+
 func (q *querier) GetAIBridgeInterceptionByID(ctx context.Context, id uuid.UUID) (database.AIBridgeInterception, error) {
 	return fetch(q.log, q.auth, q.db.GetAIBridgeInterceptionByID)(ctx, id)
 }
@@ -2787,6 +2794,27 @@ func (q *querier) GetAIBridgeToolUsagesByInterceptionID(ctx context.Context, int
 		return nil, err
 	}
 	return q.db.GetAIBridgeToolUsagesByInterceptionID(ctx, interceptionID)
+}
+
+func (q *querier) GetAIBridgeUserCostByChat(ctx context.Context, arg database.GetAIBridgeUserCostByChatParams) ([]database.GetAIBridgeUserCostByChatRow, error) {
+	if _, err := q.GetUserByID(ctx, arg.InitiatorID); err != nil { // AuthZ check
+		return nil, err
+	}
+	return q.db.GetAIBridgeUserCostByChat(ctx, arg)
+}
+
+func (q *querier) GetAIBridgeUserCostByModel(ctx context.Context, arg database.GetAIBridgeUserCostByModelParams) ([]database.GetAIBridgeUserCostByModelRow, error) {
+	if _, err := q.GetUserByID(ctx, arg.InitiatorID); err != nil { // AuthZ check
+		return nil, err
+	}
+	return q.db.GetAIBridgeUserCostByModel(ctx, arg)
+}
+
+func (q *querier) GetAIBridgeUserCostSummary(ctx context.Context, arg database.GetAIBridgeUserCostSummaryParams) (database.GetAIBridgeUserCostSummaryRow, error) {
+	if _, err := q.GetUserByID(ctx, arg.InitiatorID); err != nil { // AuthZ check
+		return database.GetAIBridgeUserCostSummaryRow{}, err
+	}
+	return q.db.GetAIBridgeUserCostSummary(ctx, arg)
 }
 
 func (q *querier) GetAIBridgeUserPromptsByInterceptionID(ctx context.Context, interceptionID uuid.UUID) ([]database.AIBridgeUserPrompt, error) {
