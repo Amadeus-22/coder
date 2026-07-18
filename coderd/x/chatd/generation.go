@@ -638,7 +638,6 @@ func (s *taskStarter) generateAssistant(
 	}
 	messages, err := buildCommitStepMessages(buildCommitStepMessagesInput{
 		modelConfigID:      prepared.ModelConfigID,
-		modelCallConfig:    prepared.ModelConfig,
 		step:               stepDataFromPersisted(outcome.Step),
 		toolNameToConfigID: prepared.ToolNameToConfigID,
 		logger:             s.opts.Logger,
@@ -689,7 +688,6 @@ func (s *taskStarter) executeLocalTools(
 	}
 	messages, err := buildCommitStepMessages(buildCommitStepMessagesInput{
 		modelConfigID:      prepared.ModelConfigID,
-		modelCallConfig:    prepared.ModelConfig,
 		step:               stepDataFromPersisted(outcome.Step),
 		toolNameToConfigID: prepared.ToolNameToConfigID,
 		logger:             s.opts.Logger,

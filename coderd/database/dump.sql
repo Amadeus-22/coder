@@ -1959,7 +1959,6 @@ CREATE TABLE chat_messages (
     compressed boolean DEFAULT false NOT NULL,
     created_by uuid,
     content_version smallint NOT NULL,
-    total_cost_micros bigint,
     runtime_ms bigint,
     deleted boolean DEFAULT false NOT NULL,
     provider_response_id text,

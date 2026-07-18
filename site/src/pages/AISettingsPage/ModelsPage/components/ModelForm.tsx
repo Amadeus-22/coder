@@ -88,7 +88,6 @@ export const ModelForm: FC<ModelFormProps> = ({
 		...(isDuplicating && { isDefault: false }),
 	};
 	const [showAdvanced, setShowAdvanced] = useState(false);
-	const [showPricing, setShowPricing] = useState(false);
 	const [showProviderConfig, setShowProviderConfig] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [confirmingReplaceDefault, setConfirmingReplaceDefault] =
@@ -323,8 +322,6 @@ export const ModelForm: FC<ModelFormProps> = ({
 					displayNameField={displayNameField}
 					setDefaultDisabled={setDefaultDisabled}
 					modelConfigFormBuildResult={modelConfigFormBuildResult}
-					showPricing={showPricing}
-					setShowPricing={setShowPricing}
 					showProviderConfig={showProviderConfig}
 					setShowProviderConfig={setShowProviderConfig}
 					showAdvanced={showAdvanced}
