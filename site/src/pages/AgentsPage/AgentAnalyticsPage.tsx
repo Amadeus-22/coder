@@ -34,6 +34,7 @@ const AgentAnalyticsPage: FC<AgentAnalyticsPageProps> = ({ now }) => {
 	const isEntitled =
 		(entitlements.features.aibridge.entitlement === "entitled" ||
 			entitlements.features.aibridge.entitlement === "grace_period") &&
+		entitlements.features.aibridge.enabled &&
 		experiments.includes("ai-gateway-cost-control");
 
 	const summaryQuery = useQuery({

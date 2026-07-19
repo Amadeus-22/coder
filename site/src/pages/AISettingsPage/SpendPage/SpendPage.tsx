@@ -155,6 +155,7 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 	const isEntitled =
 		(entitlements.features.aibridge.entitlement === "entitled" ||
 			entitlements.features.aibridge.entitlement === "grace_period") &&
+		entitlements.features.aibridge.enabled &&
 		experiments.includes("ai-gateway-cost-control");
 
 	const usersQuery = usePaginatedQuery({

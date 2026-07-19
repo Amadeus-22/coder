@@ -1176,7 +1176,7 @@ WITH initiator_costs AS (
 	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 	WHERE i.started_at >= $3::timestamptz
 		AND i.started_at < $4::timestamptz
-		AND ($5::text = '' OR i.client = $5::text)
+		AND ($5::text = '' OR COALESCE(i.client, 'Unknown') = $5::text)
 		AND (
 			$6::text = ''
 			OR u.username ILIKE '%' || $6::text || '%'
@@ -1492,7 +1492,7 @@ WITH chat_costs AS (
 	WHERE i.initiator_id = $1::uuid
 		AND i.started_at >= $2::timestamptz
 		AND i.started_at < $3::timestamptz
-		AND ($4::text = '' OR i.client = $4::text)
+		AND ($4::text = '' OR COALESCE(i.client, 'Unknown') = $4::text)
 	GROUP BY COALESCE(c.root_chat_id, c.id)
 )
 SELECT
@@ -1589,7 +1589,7 @@ LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 WHERE i.initiator_id = $1::uuid
 	AND i.started_at >= $2::timestamptz
 	AND i.started_at < $3::timestamptz
-	AND ($4::text = '' OR i.client = $4::text)
+	AND ($4::text = '' OR COALESCE(i.client, 'Unknown') = $4::text)
 GROUP BY i.provider, i.model
 ORDER BY total_cost_micros DESC, i.provider ASC, i.model ASC
 `
@@ -1666,7 +1666,7 @@ LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 WHERE i.initiator_id = $1::uuid
 	AND i.started_at >= $2::timestamptz
 	AND i.started_at < $3::timestamptz
-	AND ($4::text = '' OR i.client = $4::text)
+	AND ($4::text = '' OR COALESCE(i.client, 'Unknown') = $4::text)
 `
 
 type GetAIBridgeUserCostSummaryParams struct {
