@@ -126,7 +126,9 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 	});
 
 	return (
-		<RequirePermission isFeatureVisible={permissions.editDeploymentConfig}>
+		<RequirePermission
+			isFeatureVisible={permissions.viewAnyAIBridgeInterception}
+		>
 			<SpendPageView
 				dateRange={dateRange}
 				endDateIsExclusive={endDateIsExclusive}

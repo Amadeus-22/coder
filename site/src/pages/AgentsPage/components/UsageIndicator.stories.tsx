@@ -123,6 +123,8 @@ const meta: Meta<typeof UsageIndicator> = {
 	parameters: {
 		user: MockUserOwner,
 		permissions: MockPermissions,
+		features: ["aibridge"],
+		experiments: ["ai-gateway-cost-control"],
 	},
 };
 
