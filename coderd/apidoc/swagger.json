@@ -1339,7 +1339,10 @@
 					{
 						"CoderSessionToken": []
 					}
-				]
+				],
+				"x-apidocgen": {
+					"skip": true
+				}
 			}
 		},
 		"/api/v2/ai-gateway/keys": {
@@ -8824,7 +8827,10 @@
 					{
 						"CoderSessionToken": []
 					}
-				]
+				],
+				"x-apidocgen": {
+					"skip": true
+				}
 			}
 		},
 		"/api/v2/users/{user}/ai/spend": {

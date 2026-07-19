@@ -1148,6 +1148,7 @@ func parseAIBridgeCostDateRange(rw http.ResponseWriter, r *http.Request, p *http
 // @Param client query string false "Restrict the aggregation to a single client, e.g. Coder Agents."
 // @Success 200 {object} codersdk.AIBridgeUserCostSummary
 // @Router /api/v2/users/{user}/ai/cost-summary [get]
+// @x-apidocgen {"skip": true}
 func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := httpmw.UserParam(r)
@@ -1280,6 +1281,7 @@ func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
 // @Param offset query int false "Page offset"
 // @Success 200 {object} codersdk.AIBridgeCostUsersResponse
 // @Router /api/v2/ai-gateway/cost/users [get]
+// @x-apidocgen {"skip": true}
 func (api *API) aiBridgeCostUsers(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
