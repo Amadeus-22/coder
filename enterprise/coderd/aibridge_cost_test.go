@@ -52,6 +52,7 @@ func seedCostData(t *testing.T, db database.Store, orgID, userID uuid.UUID, now 
 		Title:             "cost test chat",
 	})
 
+	agentsEndedAt := now.Add(time.Second)
 	agentsInterception := dbgen.AIBridgeInterception(t, db, database.InsertAIBridgeInterceptionParams{
 		InitiatorID:     userID,
 		Provider:        "anthropic",
@@ -59,7 +60,7 @@ func seedCostData(t *testing.T, db database.Store, orgID, userID uuid.UUID, now 
 		StartedAt:       now,
 		Client:          sql.NullString{String: "Coder Agents", Valid: true},
 		ClientSessionID: sql.NullString{String: chat.ID.String(), Valid: true},
-	}, nil)
+	}, &agentsEndedAt)
 	dbgen.AIBridgeTokenUsage(t, db, database.InsertAIBridgeTokenUsageParams{
 		InterceptionID:        agentsInterception.ID,
 		InputTokens:           100,
@@ -70,13 +71,14 @@ func seedCostData(t *testing.T, db database.Store, orgID, userID uuid.UUID, now 
 		CreatedAt:             now,
 	})
 
+	otherEndedAt := now.Add(time.Minute + time.Second)
 	otherInterception := dbgen.AIBridgeInterception(t, db, database.InsertAIBridgeInterceptionParams{
 		InitiatorID: userID,
 		Provider:    "openai",
 		Model:       "gpt-5",
 		StartedAt:   now.Add(time.Minute),
 		Client:      sql.NullString{String: "claude-code", Valid: true},
-	}, nil)
+	}, &otherEndedAt)
 	dbgen.AIBridgeTokenUsage(t, db, database.InsertAIBridgeTokenUsageParams{
 		InterceptionID: otherInterception.ID,
 		InputTokens:    200,
@@ -158,6 +160,7 @@ func TestUserAICostSummary(t *testing.T) {
 
 		// A different client reusing the same chat session ID must be
 		// excluded from every filtered aggregate, including by_chat.
+		otherClientEndedAt := now.Add(2*time.Minute + time.Second)
 		otherClientInterception := dbgen.AIBridgeInterception(t, db, database.InsertAIBridgeInterceptionParams{
 			InitiatorID:     firstUser.UserID,
 			Provider:        "openai",
@@ -165,7 +168,7 @@ func TestUserAICostSummary(t *testing.T) {
 			StartedAt:       now.Add(2 * time.Minute),
 			Client:          sql.NullString{String: "claude-code", Valid: true},
 			ClientSessionID: sql.NullString{String: chatID.String(), Valid: true},
-		}, nil)
+		}, &otherClientEndedAt)
 		dbgen.AIBridgeTokenUsage(t, db, database.InsertAIBridgeTokenUsageParams{
 			InterceptionID: otherClientInterception.ID,
 			InputTokens:    500,

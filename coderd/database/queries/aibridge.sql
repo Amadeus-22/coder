@@ -683,6 +683,7 @@ LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 WHERE i.initiator_id = @initiator_id::uuid
 	AND i.started_at >= @start_date::timestamptz
 	AND i.started_at < @end_date::timestamptz
+	AND i.ended_at IS NOT NULL
 	AND (@client::text = '' OR COALESCE(i.client, 'Unknown') = @client::text);
 
 -- name: GetAIBridgeUserCostByModel :many
@@ -701,6 +702,7 @@ LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 WHERE i.initiator_id = @initiator_id::uuid
 	AND i.started_at >= @start_date::timestamptz
 	AND i.started_at < @end_date::timestamptz
+	AND i.ended_at IS NOT NULL
 	AND (@client::text = '' OR COALESCE(i.client, 'Unknown') = @client::text)
 GROUP BY i.provider, i.model
 ORDER BY total_cost_micros DESC, i.provider ASC, i.model ASC;
@@ -728,6 +730,7 @@ WITH chat_costs AS (
 	WHERE i.initiator_id = @initiator_id::uuid
 		AND i.started_at >= @start_date::timestamptz
 		AND i.started_at < @end_date::timestamptz
+	AND i.ended_at IS NOT NULL
 		AND (@client::text = '' OR COALESCE(i.client, 'Unknown') = @client::text)
 	GROUP BY COALESCE(c.root_chat_id, c.id)
 )
@@ -765,6 +768,7 @@ WITH initiator_costs AS (
 	LEFT JOIN aibridge_token_usages tu ON tu.interception_id = i.id
 	WHERE i.started_at >= @start_date::timestamptz
 		AND i.started_at < @end_date::timestamptz
+	AND i.ended_at IS NOT NULL
 		AND (@client::text = '' OR COALESCE(i.client, 'Unknown') = @client::text)
 		AND (
 			@username::text = ''

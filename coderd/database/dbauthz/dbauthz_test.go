@@ -6837,7 +6837,7 @@ func (s *MethodTestSuite) TestAIBridge() {
 		db.EXPECT().GetUserByID(gomock.Any(), user.ID).Return(user, nil).AnyTimes()
 		db.EXPECT().GetAIBridgeUserCostByChat(gomock.Any(), arg).Return([]database.GetAIBridgeUserCostByChatRow{row}, nil).AnyTimes()
 		check.Args(arg).
-			Asserts(user, policy.ActionRead, rbac.ResourceChat.WithOwner(user.ID.String()).AnyOrganization(), policy.ActionRead).
+			Asserts(user, policy.ActionRead, rbac.ResourceChat.WithOwner(user.ID.String()), policy.ActionRead).
 			Returns([]database.GetAIBridgeUserCostByChatRow{row})
 	}))
 
