@@ -150,13 +150,19 @@ const SpendPage: FC<SpendPageProps> = ({ now }) => {
 						return next;
 					});
 				}}
-				onSelectUser={(selectedUser: AIBridgeCostUserRollup) => {
-					setSearchParams((prev) => {
-						const next = new URLSearchParams(prev);
-						next.set("user", selectedUser.user_id);
-						return next;
-					});
-				}}
+				onSelectUser={
+					// Drill-in fetches the user profile and cost summary, both of
+					// which require user-read authorization.
+					permissions.viewAllUsers
+						? (selectedUser: AIBridgeCostUserRollup) => {
+								setSearchParams((prev) => {
+									const next = new URLSearchParams(prev);
+									next.set("user", selectedUser.user_id);
+									return next;
+								});
+							}
+						: undefined
+				}
 				summaryData={summaryQuery.data}
 				isSummaryLoading={summaryQuery.isLoading}
 				summaryError={summaryQuery.error}

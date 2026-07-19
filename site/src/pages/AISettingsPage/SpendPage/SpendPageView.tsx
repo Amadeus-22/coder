@@ -33,7 +33,7 @@ interface SpendPageViewProps {
 	drillInUserError: unknown;
 	onDrillInUserRetry: () => void;
 	onClearSelectedUser: () => void;
-	onSelectUser: (user: TypesGen.AIBridgeCostUserRollup) => void;
+	onSelectUser: ((user: TypesGen.AIBridgeCostUserRollup) => void) | undefined;
 	summaryData: TypesGen.AIBridgeUserCostSummary | undefined;
 	isSummaryLoading: boolean;
 	summaryError: unknown;

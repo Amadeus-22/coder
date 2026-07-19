@@ -43,7 +43,9 @@ interface UsageTabProps {
 		error: unknown;
 		refetch: () => unknown;
 	};
-	onSelectUser: (user: TypesGen.AIBridgeCostUserRollup) => void;
+	// Undefined disables drill-in for viewers without user-read
+	// authorization, which the drill-in endpoints require.
+	onSelectUser: ((user: TypesGen.AIBridgeCostUserRollup) => void) | undefined;
 }
 
 export const UsageTab: FC<UsageTabProps> = ({
@@ -150,16 +152,18 @@ export const UsageTab: FC<UsageTabProps> = ({
 
 const UserRow: FC<{
 	user: TypesGen.AIBridgeCostUserRollup;
-	onSelect: (user: TypesGen.AIBridgeCostUserRollup) => void;
+	onSelect: ((user: TypesGen.AIBridgeCostUserRollup) => void) | undefined;
 }> = ({ user, onSelect }) => {
 	const clickableRowProps = useClickableTableRow({
-		onClick: () => onSelect(user),
+		onClick: () => onSelect?.(user),
 	});
 
 	return (
 		<TableRow
-			{...clickableRowProps}
-			aria-label={`View details for ${user.name || user.username}`}
+			{...(onSelect ? clickableRowProps : {})}
+			aria-label={
+				onSelect ? `View details for ${user.name || user.username}` : undefined
+			}
 			className="text-xs"
 		>
 			<TableCell className="max-w-[200px] px-3 py-2">
