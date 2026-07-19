@@ -63,7 +63,9 @@ const AISettingsSidebarView: FC<AISettingsSidebarViewProps> = ({
 								MCP servers
 							</SubNavItem>
 							<SubNavItem href="/ai/settings/templates">Templates</SubNavItem>
-							<SubNavItem href="/ai/settings/spend">Spend</SubNavItem>
+							{permissions.viewAnyAIBridgeInterception && (
+								<SubNavItem href="/ai/settings/spend">Spend</SubNavItem>
+							)}
 							<SubNavItem href="/ai/settings/instructions">
 								Instructions
 							</SubNavItem>
