@@ -30,7 +30,8 @@ export const Navbar: FC = () => {
 	const canViewAISettings =
 		permissions.viewAnyAIProvider ||
 		permissions.viewAIGatewayKeys ||
-		permissions.editDeploymentConfig;
+		permissions.editDeploymentConfig ||
+		permissions.viewAnyAIBridgeInterception;
 	const canCreateChat = permissions.createChat;
 
 	const uniqueLinks = new Map<string, LinkConfig>();

@@ -71,6 +71,10 @@ const AISettingsSidebarView: FC<AISettingsSidebarViewProps> = ({
 						</div>
 					</>
 				)}
+				{!permissions.editDeploymentConfig &&
+					permissions.viewAnyAIBridgeInterception && (
+						<SidebarNavItem href="/ai/settings/spend">Spend</SidebarNavItem>
+					)}
 			</div>
 		</BaseSidebar>
 	);

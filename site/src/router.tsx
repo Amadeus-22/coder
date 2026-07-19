@@ -486,6 +486,10 @@ const AISettingsIndexRedirect = () => {
 		return <Navigate to="/ai/settings/models" replace />;
 	}
 
+	if (permissions.viewAnyAIBridgeInterception) {
+		return <Navigate to="/ai/settings/spend" replace />;
+	}
+
 	return <Navigate to="/ai/settings/providers" replace />;
 };
 
