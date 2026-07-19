@@ -17,6 +17,7 @@ import {
 	TooltipTrigger,
 } from "#/components/Tooltip/Tooltip";
 import { cn } from "#/utils/cn";
+import { LinkifiedText } from "../LinkifiedText";
 import {
 	type AgentDisplayState,
 	resolveAgentDisplayState,
@@ -209,7 +210,7 @@ const ShellTranscriptBody: React.FC<{
 								: "text-content-secondary",
 						)}
 					>
-						{block.text}
+						<LinkifiedText text={block.text} />
 					</pre>
 				))}
 			</div>
@@ -270,7 +271,7 @@ export const ExecuteAuthRequiredTool: React.FC<{
 					scrollBarClassName="w-1.5"
 				>
 					<pre className="m-0 whitespace-pre-wrap break-all border-0 bg-transparent px-3 py-2 font-mono text-xs text-content-secondary">
-						{output}
+						<LinkifiedText text={output} />
 					</pre>
 				</ScrollArea>
 			)}
