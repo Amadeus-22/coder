@@ -2797,16 +2797,21 @@ func (q *querier) GetAIBridgeToolUsagesByInterceptionID(ctx context.Context, int
 }
 
 func (q *querier) GetAIBridgeUserCostByChat(ctx context.Context, arg database.GetAIBridgeUserCostByChatParams) ([]database.GetAIBridgeUserCostByChatRow, error) {
-	// Rows include chat titles, so chat read is required on top of user
-	// read; user admins can read users but not their chats. The check is
-	// site-scoped (no AnyOrganization) because the query has no
-	// organization predicate: an org-scoped chat read must not expose the
-	// user's chats from other organizations.
 	if _, err := q.GetUserByID(ctx, arg.InitiatorID); err != nil { // AuthZ check
 		return nil, err
 	}
-	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(arg.InitiatorID.String())); err != nil {
-		return nil, err
+	// Rows include chat titles. Users can always read their own breakdown;
+	// reading another user's requires site-scoped chat read, because the
+	// query has no organization predicate and an org-scoped chat read must
+	// not expose the user's chats from other organizations.
+	act, ok := ActorFromContext(ctx)
+	if !ok {
+		return nil, ErrNoActor
+	}
+	if act.ID != arg.InitiatorID.String() {
+		if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceChat.WithOwner(arg.InitiatorID.String())); err != nil {
+			return nil, err
+		}
 	}
 	return q.db.GetAIBridgeUserCostByChat(ctx, arg)
 }

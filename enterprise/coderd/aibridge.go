@@ -1160,12 +1160,52 @@ func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary, err := api.Database.GetAIBridgeUserCostSummary(ctx, database.GetAIBridgeUserCostSummaryParams{
-		InitiatorID: user.ID,
-		StartDate:   startDate,
-		EndDate:     endDate,
-		Client:      client,
-	})
+	var (
+		summary database.GetAIBridgeUserCostSummaryRow
+		byModel []database.GetAIBridgeUserCostByModelRow
+		byChat  []database.GetAIBridgeUserCostByChatRow
+	)
+	// One repeatable-read snapshot keeps the totals and both breakdowns
+	// consistent with each other under live gateway traffic.
+	err := api.Database.InTx(func(store database.Store) error {
+		var err error
+		summary, err = store.GetAIBridgeUserCostSummary(ctx, database.GetAIBridgeUserCostSummaryParams{
+			InitiatorID: user.ID,
+			StartDate:   startDate,
+			EndDate:     endDate,
+			Client:      client,
+		})
+		if err != nil {
+			return err
+		}
+
+		byModel, err = store.GetAIBridgeUserCostByModel(ctx, database.GetAIBridgeUserCostByModelParams{
+			InitiatorID: user.ID,
+			StartDate:   startDate,
+			EndDate:     endDate,
+			Client:      client,
+		})
+		if err != nil {
+			return err
+		}
+
+		byChat, err = store.GetAIBridgeUserCostByChat(ctx, database.GetAIBridgeUserCostByChatParams{
+			InitiatorID: user.ID,
+			StartDate:   startDate,
+			EndDate:     endDate,
+			Client:      client,
+		})
+		if err != nil {
+			// The chat breakdown exposes chat titles and therefore
+			// requires chat read; callers without it (e.g. user admins)
+			// still get the totals and model breakdown.
+			if !dbauthz.IsNotAuthorizedError(err) {
+				return err
+			}
+			byChat = nil
+		}
+		return nil
+	}, &database.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		if dbauthz.IsNotAuthorizedError(err) {
 			httpapi.Forbidden(rw)
@@ -1173,38 +1213,6 @@ func (api *API) userAICostSummary(rw http.ResponseWriter, r *http.Request) {
 		}
 		httpapi.InternalServerError(rw, err)
 		return
-	}
-
-	byModel, err := api.Database.GetAIBridgeUserCostByModel(ctx, database.GetAIBridgeUserCostByModelParams{
-		InitiatorID: user.ID,
-		StartDate:   startDate,
-		EndDate:     endDate,
-		Client:      client,
-	})
-	if err != nil {
-		if dbauthz.IsNotAuthorizedError(err) {
-			httpapi.Forbidden(rw)
-			return
-		}
-		httpapi.InternalServerError(rw, err)
-		return
-	}
-
-	byChat, err := api.Database.GetAIBridgeUserCostByChat(ctx, database.GetAIBridgeUserCostByChatParams{
-		InitiatorID: user.ID,
-		StartDate:   startDate,
-		EndDate:     endDate,
-		Client:      client,
-	})
-	if err != nil {
-		// The chat breakdown exposes chat titles and therefore requires
-		// chat read; callers without it (e.g. user admins) still get the
-		// totals and model breakdown.
-		if !dbauthz.IsNotAuthorizedError(err) {
-			httpapi.InternalServerError(rw, err)
-			return
-		}
-		byChat = nil
 	}
 
 	resp := codersdk.AIBridgeUserCostSummary{

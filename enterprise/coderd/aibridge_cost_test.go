@@ -239,6 +239,14 @@ func TestUserAICostSummary(t *testing.T) {
 		got, err = ownerClient.UserAICostSummary(ctx, firstUser.UserID, filter)
 		require.NoError(t, err)
 		require.NotEmpty(t, got.ByChat)
+
+		// Members always see their own chat breakdown even though the
+		// member role has no site-wide chat read.
+		memberClient, memberUser := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID)
+		seedCostData(t, db, firstUser.OrganizationID, memberUser.ID, now)
+		got, err = memberClient.UserAICostSummary(ctx, memberUser.ID, filter)
+		require.NoError(t, err)
+		require.NotEmpty(t, got.ByChat)
 	})
 
 	t.Run("RoleAccess", func(t *testing.T) {
