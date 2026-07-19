@@ -18,3 +18,7 @@ ALTER TABLE users ADD COLUMN chat_spend_limit_micros BIGINT DEFAULT NULL
 
 ALTER TABLE groups ADD COLUMN chat_spend_limit_micros BIGINT DEFAULT NULL
     CHECK (chat_spend_limit_micros IS NULL OR chat_spend_limit_micros > 0);
+
+CREATE INDEX idx_chat_messages_owner_spend
+    ON chat_messages (chat_id, created_at)
+    WHERE total_cost_micros IS NOT NULL;
