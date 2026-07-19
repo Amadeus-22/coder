@@ -159,7 +159,7 @@ For chat debug logging (not experiment-gated), see [Chat debug logging](./chat-d
 ## Where we are headed
 
 The controls above cover providers, models, system prompts, templates, MCP
-servers, usage limits, and data retention. We are continuing to invest in platform controls
+servers, AI Gateway budgets, and data retention. We are continuing to invest in platform controls
 based on what we hear from customers deploying agents in regulated and
 enterprise environments.
 
