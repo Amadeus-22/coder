@@ -148,6 +148,43 @@ func TestClassify(t *testing.T) {
 			},
 		},
 		{
+			// The aibridge budget rejection is a 403 with a text/plain
+			// body; the SDK error message reduces to a bare status line,
+			// so the body is the only usage-limit signal.
+			name: "AIBudget403PlainTextBodyClassifiesAsUsageLimit",
+			err: testProviderError(
+				`POST "http://coder-aibridge/v1/messages": 403 Forbidden`,
+				403,
+				nil,
+				[]byte("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nAI budget of US$10.00 exceeded. Please contact an administrator for more details.\n"),
+			),
+			want: chaterror.ClassifiedError{
+				Message:    "The AI usage limit has been exceeded. Contact an administrator or check the applicable budget and quota settings.",
+				Detail:     "AI budget of US$10.00 exceeded. Please contact an administrator for more details.",
+				Kind:       codersdk.ChatErrorKindUsageLimit,
+				Provider:   "",
+				Retryable:  false,
+				StatusCode: 403,
+			},
+		},
+		{
+			name: "HTMLBodyDoesNotBecomeDetail",
+			err: testProviderError(
+				`POST "https://example.com/v1/messages": 403 Forbidden`,
+				403,
+				nil,
+				[]byte("HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n\r\n<html><body>Forbidden</body></html>"),
+			),
+			want: chaterror.ClassifiedError{
+				Message:    "Authentication with the AI provider failed. Check the API key and permissions.",
+				Detail:     `POST "https://example.com/v1/messages": 403 Forbidden`,
+				Kind:       codersdk.ChatErrorKindAuth,
+				Provider:   "",
+				Retryable:  false,
+				StatusCode: 403,
+			},
+		},
+		{
 			name: "ForbiddenContextLengthClassifiesAsConfig",
 			err:  xerrors.New("forbidden: context length exceeded"),
 			want: chaterror.ClassifiedError{

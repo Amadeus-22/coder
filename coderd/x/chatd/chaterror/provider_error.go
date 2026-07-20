@@ -45,7 +45,17 @@ func providerErrorDetail(providerErr *fantasy.ProviderError) string {
 	}
 	// The Message fallback can also be the SDK transport wrapper (e.g. for
 	// Bedrock via aibridge), so unwrap it for the same clean detail.
-	return unwrapTransportErrorMessage(strings.TrimSpace(providerErr.Message))
+	message := unwrapTransportErrorMessage(strings.TrimSpace(providerErr.Message))
+	// A message that is still a bare transport wrapper carries only the
+	// status line. Prefer a plain-text response body then: gateway-level
+	// rejections (e.g. the aibridge AI budget 403) send text/plain bodies
+	// that carry the only classification signal.
+	if message == "" || transportErrorPrefix.MatchString(message) {
+		if text := plainTextResponseMessage(providerErr.ResponseBody); text != "" {
+			return text
+		}
+	}
+	return message
 }
 
 // providerErrorResponseMessage extracts the human-readable message from a
@@ -60,6 +70,21 @@ func providerErrorResponseMessage(responseDump []byte) string {
 	}
 	body := providerErrorResponseBody(responseDump)
 	return unwrapTransportErrorMessage(jsonErrorMessage(body))
+}
+
+// plainTextResponseMessage returns the trimmed plain-text body of a response
+// dump, rejecting JSON-like bodies (JSON extraction already failed, so they
+// are garbage) and markup pages such as proxy HTML error responses.
+func plainTextResponseMessage(responseDump []byte) string {
+	if len(responseDump) == 0 || len(responseDump) > 64*1024 {
+		return ""
+	}
+	text := strings.TrimSpace(string(providerErrorResponseBody(responseDump)))
+	if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") ||
+		strings.HasPrefix(text, "<") {
+		return ""
+	}
+	return text
 }
 
 // unwrapTransportErrorMessage extracts the clean provider message from an
