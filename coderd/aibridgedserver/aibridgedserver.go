@@ -33,6 +33,7 @@ import (
 	coderdpubsub "github.com/coder/coder/v2/coderd/pubsub"
 	"github.com/coder/coder/v2/coderd/util/ptr"
 	"github.com/coder/coder/v2/codersdk"
+	"github.com/coder/quartz"
 )
 
 var (
@@ -113,15 +114,31 @@ type Server struct {
 	// budgetPolicy selects the effective group when a user belongs to multiple
 	// budgeted groups, used for cost attribution on token usage records.
 	budgetPolicy codersdk.AIBudgetPolicy
+	// budgetPeriod is the deployment-configured budgeting period used to
+	// derive the window over which user AI spend is aggregated.
+	budgetPeriod codersdk.AIBudgetPeriod
+	clock        quartz.Clock
 }
 
-func NewServer(lifecycleCtx context.Context, store store, ps pubsub.Pubsub, logger slog.Logger, accessURL string,
-	bridgeCfg codersdk.AIBridgeConfig, externalAuthConfigs []*externalauth.Config, experiments codersdk.Experiments,
-	aiSeatTracker aiseats.SeatTracker,
-) (*Server, error) {
-	eac := make(map[string]*externalauth.Config, len(externalAuthConfigs))
+// Options carries the dependencies required to construct an aibridged Server.
+type Options struct {
+	Store         store
+	Pubsub        pubsub.Pubsub
+	AISeatTracker aiseats.SeatTracker
 
-	for _, cfg := range externalAuthConfigs {
+	AccessURL           string
+	GatewayCfg          codersdk.AIBridgeConfig
+	ExternalAuthConfigs []*externalauth.Config
+	Experiments         codersdk.Experiments
+
+	Logger slog.Logger
+	Clock  quartz.Clock
+}
+
+func NewServer(lifecycleCtx context.Context, opts Options) (*Server, error) {
+	eac := make(map[string]*externalauth.Config, len(opts.ExternalAuthConfigs))
+
+	for _, cfg := range opts.ExternalAuthConfigs {
 		// Only External Auth configs which are configured with an MCP URL are relevant to aibridged.
 		if cfg.MCPURL == "" {
 			continue
@@ -131,20 +148,22 @@ func NewServer(lifecycleCtx context.Context, store store, ps pubsub.Pubsub, logg
 
 	srv := &Server{
 		lifecycleCtx:        lifecycleCtx,
-		store:               store,
-		pubsub:              ps,
-		logger:              logger,
+		store:               opts.Store,
+		pubsub:              opts.Pubsub,
+		logger:              opts.Logger,
 		externalAuthConfigs: eac,
-		structuredLogging:   bridgeCfg.StructuredLogging.Value(),
-		aiSeatTracker:       aiSeatTracker,
-		budgetPolicy:        codersdk.NewAIBudgetPolicyFromString(bridgeCfg.BudgetPolicy),
+		structuredLogging:   opts.GatewayCfg.StructuredLogging.Value(),
+		aiSeatTracker:       opts.AISeatTracker,
+		budgetPolicy:        codersdk.NewAIBudgetPolicyFromString(opts.GatewayCfg.BudgetPolicy),
+		budgetPeriod:        codersdk.NewAIBudgetPeriodFromString(opts.GatewayCfg.BudgetPeriod),
+		clock:               opts.Clock,
 	}
 
-	if bridgeCfg.InjectCoderMCPTools {
-		logger.Warn(lifecycleCtx, "inject MCP tools option is deprecated and will be removed in a future release")
-		coderMCPConfig, err := getCoderMCPServerConfig(experiments, accessURL)
+	if opts.GatewayCfg.InjectCoderMCPTools {
+		opts.Logger.Warn(lifecycleCtx, "inject MCP tools option is deprecated and will be removed in a future release")
+		coderMCPConfig, err := getCoderMCPServerConfig(opts.Experiments, opts.AccessURL)
 		if err != nil {
-			logger.Warn(lifecycleCtx, "failed to retrieve coder MCP server config, Coder MCP will not be available", slog.Error(err))
+			opts.Logger.Warn(lifecycleCtx, "failed to retrieve coder MCP server config, Coder MCP will not be available", slog.Error(err))
 		}
 		srv.coderMCPConfig = coderMCPConfig
 	}
@@ -258,10 +277,20 @@ func (s *Server) RecordInterceptionEnded(ctx context.Context, in *proto.RecordIn
 		)
 	}
 
+	// The error type and message form one logical unit: the terminal error.
+	// Gate the message on the type so the row never carries a message without a
+	// type (the migration treats both-NULL as a successful interception).
+	errType := interceptionErrorType(in.GetErrorType())
+	var errMsg sql.NullString
+	if errType.Valid && in.GetErrorMessage() != "" {
+		errMsg = sql.NullString{String: truncateErrorMessage(in.GetErrorMessage()), Valid: true}
+	}
 	_, err = s.store.UpdateAIBridgeInterceptionEnded(ctx, database.UpdateAIBridgeInterceptionEndedParams{
 		ID:             intcID,
 		EndedAt:        in.EndedAt.AsTime(),
 		CredentialHint: in.CredentialHint,
+		ErrorType:      errType,
+		ErrorMessage:   errMsg,
 	})
 	if err != nil {
 		return nil, xerrors.Errorf("end interception: %w", err)
@@ -737,7 +766,8 @@ func (s *Server) IsAuthorized(ctx context.Context, in *proto.IsAuthorizedRequest
 }
 
 // IsBudgetExceeded reports whether the user's AI spend has reached their
-// effective limit over [PeriodStart, now].
+// effective limit over [periodStart, now], where periodStart is the start of
+// the current deployment-configured budget period.
 func (s *Server) IsBudgetExceeded(ctx context.Context, in *proto.IsBudgetExceededRequest) (*proto.IsBudgetExceededResponse, error) {
 	//nolint:gocritic // AIBridged has specific authz rules.
 	ctx = dbauthz.AsAIBridged(ctx)
@@ -746,14 +776,13 @@ func (s *Server) IsBudgetExceeded(ctx context.Context, in *proto.IsBudgetExceede
 	if err != nil {
 		return nil, xerrors.Errorf("invalid user_id %q: %w", in.GetUserId(), err)
 	}
-	// An unset PeriodStart deserializes to time.Unix(0, 0), which would
-	// incorrectly aggregate the user's lifetime spend against a period budget.
-	if in.PeriodStart == nil {
-		return nil, xerrors.New("period_start is required")
-	}
-	periodStart := in.GetPeriodStart().AsTime()
 
-	userBudget, err := s.checkUserAIBudget(ctx, userID, periodStart)
+	periodWindow, err := budget.CurrentPeriod(s.clock.Now(), s.budgetPeriod)
+	if err != nil {
+		return nil, xerrors.Errorf("compute AI budget period: %w", err)
+	}
+
+	userBudget, err := s.checkUserAIBudget(ctx, userID, periodWindow.Start)
 	if err != nil {
 		return nil, err
 	}
@@ -994,6 +1023,38 @@ func credentialKindOrDefault(kind string) database.CredentialKind {
 	return ck
 }
 
+// maxErrorMessageBytes caps the interception error message stored in the
+// database, enforced at this trust boundary regardless of caller behavior.
+const maxErrorMessageBytes = 1024
+
+// truncateErrorMessage caps msg to maxErrorMessageBytes, dropping any partial
+// trailing rune so the stored value stays valid UTF-8.
+func truncateErrorMessage(msg string) string {
+	if len(msg) <= maxErrorMessageBytes {
+		return msg
+	}
+	return strings.ToValidUTF8(msg[:maxErrorMessageBytes], "")
+}
+
+// interceptionErrorType maps the wire error type onto the nullable DB enum. An
+// empty value yields NULL (a successful interception). A non-empty but
+// unrecognized value (e.g. version skew where the client knows an enum the DB
+// migration does not yet) is stored as 'unknown' rather than NULL, so the row's
+// error columns stay consistent with a recorded error_message.
+func interceptionErrorType(errType string) database.NullAIBridgeInterceptionErrorType {
+	if errType == "" {
+		return database.NullAIBridgeInterceptionErrorType{}
+	}
+	et := database.AIBridgeInterceptionErrorType(errType)
+	if !et.Valid() {
+		et = database.AibridgeInterceptionErrorTypeUnknown
+	}
+	return database.NullAIBridgeInterceptionErrorType{
+		AIBridgeInterceptionErrorType: et,
+		Valid:                         true,
+	}
+}
+
 func metadataToMap(in map[string]*anypb.Any) map[string]any {
 	meta := make(map[string]any, len(in))
 	for k, v := range in {
@@ -1067,6 +1128,7 @@ func aiProviderToProto(row database.AIProvider, keys []database.AIProviderKey) (
 			SmallFastModel:  settings.Bedrock.SmallFastModel,
 			RoleArn:         settings.Bedrock.RoleARN,
 			ExternalId:      settings.Bedrock.ExternalID,
+			Protocol:        string(settings.Bedrock.Protocol),
 		}
 	}
 

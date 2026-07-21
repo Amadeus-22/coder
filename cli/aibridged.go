@@ -44,7 +44,7 @@ func newAIBridgeDaemon(coderAPI *coderd.API, cfg codersdk.AIBridgeConfig, reg pr
 	ctx := context.Background()
 	coderAPI.Logger.Debug(ctx, "starting in-memory aibridge daemon")
 
-	logger := coderAPI.Logger.Named("aibridged")
+	logger := coderAPI.Logger.Named("ai-gateway")
 
 	providerMetrics := aibridged.NewMetrics(reg)
 	tracer := coderAPI.TracerProvider.Tracer(tracing.TracerName)
@@ -214,6 +214,7 @@ func protoToProviderSpec(pp *proto.AIProvider) aiProviderSpec {
 		)
 		bedrock.RoleARN = b.GetRoleArn()
 		bedrock.ExternalID = b.GetExternalId()
+		bedrock.Protocol = codersdk.AIProviderBedrockProtocol(b.GetProtocol())
 		spec.Bedrock = ptr.Ref(bedrock)
 	}
 	return spec
@@ -356,6 +357,7 @@ func bedrockConfig(baseURL string, bedrock *codersdk.AIProviderBedrockSettings) 
 		SmallFastModel:  bedrockSettings.SmallFastModel,
 		RoleARN:         bedrockSettings.RoleARN,
 		ExternalID:      bedrockSettings.ExternalID,
+		Protocol:        config.BedrockProtocol(bedrockSettings.ResolvedProtocol()),
 	}
 }
 

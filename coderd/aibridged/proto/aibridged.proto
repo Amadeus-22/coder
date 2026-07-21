@@ -35,7 +35,7 @@ service Authorizer {
   // TODO: add authorization; currently only key validation takes place.
   rpc IsAuthorized(IsAuthorizedRequest) returns (IsAuthorizedResponse);
   // IsBudgetExceeded reports whether the user's AI spend has reached their
-  // effective limit over [period_start, now].
+  // effective limit for the current deployment-configured budget period.
   rpc IsBudgetExceeded(IsBudgetExceededRequest) returns (IsBudgetExceededResponse);
 }
 
@@ -83,6 +83,12 @@ message RecordInterceptionEndedRequest {
   string id = 1; // UUID.
   google.protobuf.Timestamp ended_at = 2;
   string credential_hint = 3;
+  // error_type is the categorised terminal upstream error, absent when the
+  // interception succeeded. Matches the aibridge_interception_error_type enum.
+  optional string error_type = 4;
+  // error_message is the raw terminal upstream error message, absent when the
+  // interception succeeded.
+  optional string error_message = 5;
 }
 
 message RecordInterceptionEndedResponse {}
@@ -183,8 +189,6 @@ message IsAuthorizedResponse {
 
 message IsBudgetExceededRequest {
   string user_id = 1; // UUID
-  // The spend aggregation window is [period_start, now].
-  google.protobuf.Timestamp period_start = 2;
 }
 
 message IsBudgetExceededResponse {
@@ -229,4 +233,7 @@ message AIProviderKindBedrock {
   string small_fast_model = 5;
   string role_arn = 6;
   string external_id = 7;
+  // protocol selects the Bedrock wire protocol ("invoke-model" or "mantle").
+  // Empty falls back to invoke-model.
+  string protocol = 8;
 }

@@ -1,4 +1,5 @@
 import type {
+	TemplateBuilderBase,
 	TemplateBuilderComposeModule,
 	TemplateBuilderComposeRequest,
 	TemplateBuilderCreateTemplateRequest,
@@ -17,6 +18,23 @@ export type SelectedBaseMeta = {
 	hasParameters: boolean;
 	hasPrerequisites: boolean;
 };
+
+/**
+ * Maps an API TemplateBuilderBase to the UI-only SelectedBaseMeta.
+ */
+export function toSelectedBaseMeta(
+	base: TemplateBuilderBase,
+): SelectedBaseMeta {
+	return {
+		id: base.id,
+		name: base.name,
+		iconUrl: base.icon,
+		os: base.os,
+		hasParameters:
+			base.variables?.length > 0 && base.variables?.some((v) => !v.sensitive),
+		hasPrerequisites: Boolean(base.prerequisites?.length),
+	};
+}
 
 /**
  * UI-only metadata for a selected module.
@@ -62,14 +80,34 @@ export const initialWizardState: TemplateBuilderWizardState = {
 	sessionId: "",
 };
 
-/** Creates a fresh wizard state with the given session ID and current timestamp. */
-export function createWizardState(
-	sessionId: string,
-): TemplateBuilderWizardState {
-	return {
+/** Arguments for building a fresh wizard state on mount. */
+export type WizardInit = {
+	/** Optional base template to preselect (from the ?base= param). */
+	preselectedBase?: SelectedBaseMeta;
+	/** Stable session ID shared across telemetry events for this mount. */
+	sessionId: string;
+};
+
+/**
+ * Builds the initial wizard state, seeding telemetry fields and optionally
+ * preselecting a base template.
+ */
+export function initWizardState({
+	preselectedBase,
+	sessionId,
+}: WizardInit): TemplateBuilderWizardState {
+	const base: TemplateBuilderWizardState = {
 		...initialWizardState,
 		enteredAt: Date.now(),
 		sessionId,
+	};
+	if (!preselectedBase) {
+		return base;
+	}
+	return {
+		...base,
+		baseTemplateId: preselectedBase.id,
+		selectedBase: preselectedBase,
 	};
 }
 
