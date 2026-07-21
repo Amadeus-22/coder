@@ -18214,7 +18214,7 @@ const docTemplate = `{
                     "$ref": "#/definitions/codersdk.ConnectionType"
                 },
                 "web_info": {
-                    "description": "WebInfo is only set when ` + "`" + `type` + "`" + ` is one of:\n- ` + "`" + `ConnectionTypePortForwarding` + "`" + `\n- ` + "`" + `ConnectionTypeWorkspaceApp` + "`" + `\n- ` + "`" + `ConnectionTypeTailnet` + "`" + `",
+                    "description": "WebInfo is only set when ` + "`" + `type` + "`" + ` is one of:\n- ` + "`" + `ConnectionTypePortForwarding` + "`" + `\n- ` + "`" + `ConnectionTypeWorkspaceApp` + "`" + `\n- ` + "`" + `ConnectionTypeTunnel` + "`" + `",
                     "allOf": [
                         {
                             "$ref": "#/definitions/codersdk.ConnectionLogWebInfo"
@@ -18308,7 +18308,7 @@ const docTemplate = `{
                 "reconnecting_pty",
                 "workspace_app",
                 "port_forwarding",
-                "tailnet"
+                "tunnel"
             ],
             "x-enum-varnames": [
                 "ConnectionTypeSSH",
@@ -18317,7 +18317,7 @@ const docTemplate = `{
                 "ConnectionTypeReconnectingPTY",
                 "ConnectionTypeWorkspaceApp",
                 "ConnectionTypePortForwarding",
-                "ConnectionTypeTailnet"
+                "ConnectionTypeTunnel"
             ]
         },
         "codersdk.ConvertLoginRequest": {
