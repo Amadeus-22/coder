@@ -62,6 +62,7 @@ const createSecretFromRequest = (
 	description: request.description ?? "",
 	env_name: request.env_name ?? "",
 	file_path: request.file_path ?? "",
+	enabled: request.enabled ?? true,
 	created_at: "2026-05-04T00:00:00Z",
 	updated_at: "2026-05-04T00:00:00Z",
 });

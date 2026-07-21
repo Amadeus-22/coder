@@ -25,6 +25,13 @@ const (
 	userSecretEnvNameField  = "env_name"
 	userSecretFilePathField = "file_path"
 
+	// userSecretInjectionTargetRequiredMessage is returned when a write
+	// would leave a secret with both env_name and file_path empty. The
+	// agent manifest layer relies on every enabled secret having at
+	// least one injection target, so we enforce the invariant here
+	// rather than carrying the both-empty special case downstream.
+	userSecretInjectionTargetRequiredMessage = "User secret must have at least one of env_name or file_path set. To keep a secret without injecting it, set enabled to false instead of clearing both targets."
+
 	// These names are raised by the enforce_user_secrets_per_user_limits
 	// trigger with USING CONSTRAINT. They are not table CHECK
 	// constraints, so dbgen does not emit them in check_constraint.go.
@@ -32,6 +39,11 @@ const (
 	userSecretsTotalBytesLimitConstraint database.CheckConstraint = "user_secrets_per_user_total_bytes_limit"
 	userSecretsEnvBytesLimitConstraint   database.CheckConstraint = "user_secrets_per_user_env_bytes_limit"
 )
+
+// errUserSecretInjectionTargetRequired signals that a PATCH would leave a
+// secret with both env_name and file_path empty. It is returned from the
+// patchUserSecret transaction so the handler can map it to a 400.
+var errUserSecretInjectionTargetRequired = xerrors.New("user secret must have at least one of env_name or file_path set")
 
 // @Summary Create a new user secret
 // @ID create-a-new-user-secret
@@ -66,6 +78,17 @@ func (api *API) postUserSecret(rw http.ResponseWriter, r *http.Request) {
 		writeUserSecretValidationErrors(ctx, rw, http.StatusBadRequest, validations)
 		return
 	}
+	if req.EnvName == "" && req.FilePath == "" {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: userSecretInjectionTargetRequiredMessage,
+		})
+		return
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
 
 	secret, err := api.Database.CreateUserSecret(ctx, database.CreateUserSecretParams{
 		ID:          uuid.New(),
@@ -76,6 +99,7 @@ func (api *API) postUserSecret(rw http.ResponseWriter, r *http.Request) {
 		ValueKeyID:  sql.NullString{},
 		EnvName:     req.EnvName,
 		FilePath:    req.FilePath,
+		Enabled:     enabled,
 	})
 	if err != nil {
 		if validations := userSecretConflictValidationErrors(err); len(validations) > 0 {
@@ -185,7 +209,7 @@ func (api *API) patchUserSecret(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Value == nil && req.Description == nil && req.EnvName == nil && req.FilePath == nil {
+	if req.Value == nil && req.Description == nil && req.EnvName == nil && req.FilePath == nil && req.Enabled == nil {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
 			Message: "At least one field must be provided.",
 		})
@@ -208,6 +232,8 @@ func (api *API) patchUserSecret(rw http.ResponseWriter, r *http.Request) {
 		EnvName:           "",
 		UpdateFilePath:    req.FilePath != nil,
 		FilePath:          "",
+		UpdateEnabled:     req.Enabled != nil,
+		Enabled:           false,
 	}
 	if req.Value != nil {
 		params.Value = *req.Value
@@ -220,6 +246,9 @@ func (api *API) patchUserSecret(rw http.ResponseWriter, r *http.Request) {
 	}
 	if req.FilePath != nil {
 		params.FilePath = *req.FilePath
+	}
+	if req.Enabled != nil {
+		params.Enabled = *req.Enabled
 	}
 
 	// Pre-read the secret inside a transaction so the audit diff has both an
@@ -241,6 +270,21 @@ func (api *API) patchUserSecret(rw http.ResponseWriter, r *http.Request) {
 		}
 		aReq.Old = old
 
+		// Reject patches that would leave the secret with both env_name and
+		// file_path empty. Evaluated against the post-update state so atomic
+		// env<->file swaps in a single PATCH still succeed.
+		postEnvName := old.EnvName
+		if req.EnvName != nil {
+			postEnvName = *req.EnvName
+		}
+		postFilePath := old.FilePath
+		if req.FilePath != nil {
+			postFilePath = *req.FilePath
+		}
+		if postEnvName == "" && postFilePath == "" {
+			return errUserSecretInjectionTargetRequired
+		}
+
 		updated, err := tx.UpdateUserSecretByUserIDAndName(ctx, params)
 		if err != nil {
 			return xerrors.Errorf("update user secret: %w", err)
@@ -252,6 +296,12 @@ func (api *API) patchUserSecret(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			httpapi.ResourceNotFound(rw)
+			return
+		}
+		if errors.Is(err, errUserSecretInjectionTargetRequired) {
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: userSecretInjectionTargetRequiredMessage,
+			})
 			return
 		}
 		if validations := userSecretConflictValidationErrors(err); len(validations) > 0 {
