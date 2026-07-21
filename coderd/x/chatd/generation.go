@@ -20,6 +20,7 @@ import (
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatretry"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatstate"
+	"github.com/coder/coder/v2/coderd/x/chatd/chattool"
 	"github.com/coder/coder/v2/coderd/x/chatd/messagepartbuffer"
 	"github.com/coder/coder/v2/codersdk"
 )
@@ -129,8 +130,12 @@ var errCompactionStillOverLimit = chaterror.WithClassification(
 )
 
 type generationDecision struct {
-	kind                    generationActionKind
-	localToolCalls          []fantasy.ToolCallContent
+	kind           generationActionKind
+	localToolCalls []fantasy.ToolCallContent
+	// assistantMessageID is the message that issued
+	// localToolCalls; the execute tool hashes it into its
+	// idempotency tokens (see chattool.ExecuteIdentity).
+	assistantMessageID      int64
 	pendingDynamicToolCalls []pendingDynamicToolCall
 	finishReason            generationFinishReason
 	promotedMessageID       int64
@@ -186,7 +191,7 @@ type generationDecisionInput struct {
 }
 
 func decideGenerationAction(input generationDecisionInput) (generationDecision, error) {
-	localCalls, dynamicCalls, err := unresolvedToolCallsFromHistory(input.messages, input.dynamicToolNames)
+	assistantMessageID, localCalls, dynamicCalls, err := unresolvedToolCallsFromHistory(input.messages, input.dynamicToolNames)
 	if err != nil {
 		return generationDecision{}, err
 	}
@@ -201,7 +206,12 @@ func decideGenerationAction(input generationDecisionInput) (generationDecision, 
 			}
 			dynamicCalls = nil
 		}
-		return generationDecision{kind: generationActionExecuteLocalTools, localToolCalls: localCalls, pendingDynamicToolCalls: dynamicCalls}, nil
+		return generationDecision{
+			kind:                    generationActionExecuteLocalTools,
+			localToolCalls:          localCalls,
+			assistantMessageID:      assistantMessageID,
+			pendingDynamicToolCalls: dynamicCalls,
+		}, nil
 	}
 	if len(dynamicCalls) > 0 {
 		return generationDecision{kind: generationActionEnterRequiresAction, pendingDynamicToolCalls: dynamicCalls}, nil
@@ -275,23 +285,26 @@ func generationCompactionContextLimit(compaction *generationCompaction) int64 {
 	return compaction.Options.ContextLimit
 }
 
+// unresolvedToolCallsFromHistory returns the ID of the latest
+// assistant message together with its tool calls that have no
+// result yet, split into locally executed and dynamic calls.
 func unresolvedToolCallsFromHistory(
 	messages []database.ChatMessage,
 	dynamicToolNames map[string]bool,
-) ([]fantasy.ToolCallContent, []pendingDynamicToolCall, error) {
+) (int64, []fantasy.ToolCallContent, []pendingDynamicToolCall, error) {
 	assistantIndex := lastMessageIndex(messages, func(msg database.ChatMessage) bool {
 		return msg.Role == database.ChatMessageRoleAssistant
 	})
 	if assistantIndex == -1 {
-		return nil, nil, nil
+		return 0, nil, nil, nil
 	}
 	assistantParts, err := chatprompt.ParseContent(messages[assistantIndex])
 	if err != nil {
-		return nil, nil, xerrors.Errorf("parse assistant message: %w", err)
+		return 0, nil, nil, xerrors.Errorf("parse assistant message: %w", err)
 	}
 	handled, err := handledToolCallIDs(messages[assistantIndex+1:])
 	if err != nil {
-		return nil, nil, err
+		return 0, nil, nil, err
 	}
 	localCalls := make([]fantasy.ToolCallContent, 0)
 	dynamicCalls := make([]pendingDynamicToolCall, 0)
@@ -314,7 +327,7 @@ func unresolvedToolCallsFromHistory(
 			ProviderExecuted: part.ProviderExecuted,
 		})
 	}
-	return localCalls, dynamicCalls, nil
+	return messages[assistantIndex].ID, localCalls, dynamicCalls, nil
 }
 
 func hasExclusiveToolCall(toolCalls []fantasy.ToolCallContent, exclusiveToolNames map[string]bool) bool {
@@ -668,7 +681,11 @@ func (s *taskStarter) executeLocalTools(
 		provider = prepared.Model.Provider()
 		modelName = prepared.Model.Model()
 	}
-	outcome, err := chatloop.ExecuteLocalTools(ctx, chatloop.ExecuteLocalToolsOptions{
+	toolCtx := chattool.WithExecuteIdentity(ctx, chattool.ExecuteIdentity{
+		ChatID:             input.ChatID,
+		AssistantMessageID: decision.assistantMessageID,
+	})
+	outcome, err := chatloop.ExecuteLocalTools(toolCtx, chatloop.ExecuteLocalToolsOptions{
 		Tools:              prepared.Tools,
 		ActiveTools:        prepared.ActiveTools,
 		ProviderTools:      prepared.ProviderTools,

@@ -904,6 +904,18 @@ Users can also request a compaction on demand via `POST /api/experimental/chats/
 
 The `compaction_requested_at` marker is one-shot: transitions that keep an active turn alive (`Acquire`, `Abandon`, `SetArchived`, queueing a message on a busy chat) carry it forward, while every other transition that rewrites the execution state (`FinishTurn`, `FinishError`, `Interrupt`, `EditMessage`, `PromoteQueuedMessage`, `CancelRequiresAction`, `ReconcileInvalidState`, and so on) clears it by construction, so a stale request can never replay on a later turn.
 
+## Execute tool idempotency
+
+When a running chat is interrupted, edited, or its worker crashes, the next turn replays unresolved tool calls from history (`unresolvedToolCallsFromHistory`). For the `execute` tool a naive replay runs the shell command again, which is unsafe for non-idempotent commands.
+
+To deduplicate replays, chatd derives an idempotency token per execute dispatch: a SHA-256 hash of the chat ID, the assistant message ID that issued the call, and the provider tool call ID. All three inputs are durable, so a replay of the same persisted call derives the same token. Provider tool call IDs alone can repeat across regenerations, but history edits soft-delete and re-insert messages, so a regenerated assistant message gets a new row ID and therefore new tokens. The generation step passes the chat and assistant message IDs to the tool through the execution context (`chattool.WithExecuteIdentity`), and the tool sends the token as `client_token` on the agent's `StartProcess` request.
+
+The workspace agent keeps an in-memory token index. A start request whose token already owns a process attaches to it instead of spawning a duplicate; exited processes started under a token are retained for 60 minutes, so a replay that arrives after the command finished still receives the recorded result. A repeated token with different parameters (command, requested workdir, env, background flag, or chat) answers 409, and the tool returns an error result without starting anything. A 409 whose token is still owned by an in-flight concurrent start is transient rather than permanent: the tool retries the start while its budget lasts (the owner either publishes a process to attach to or releases the token), and only reports an unresolved outcome if the budget runs out first.
+
+Attached foreground starts also return the process's original start time. The replay waits only the remaining execution budget (`started_at + timeout - now`) instead of a fresh full timeout. An attached process that already exited reports its real result even past the deadline; one still running past the deadline returns the standard timed-out result carrying the `background_process_id` handle.
+
+This is at-least-once execution with best-effort deduplication. The token index does not survive agent restarts, entries are reaped 60 minutes after process exit, and agents that predate the token API ignore it entirely; in all of those cases a replay runs the command again.
+
 # Stream loop
 
 The stream loop powers the `GET /api/experimental/chats/{chat}/stream` endpoint. It is scoped to one chat and one client WebSocket. It's responsible for delivering a stream of chat updates to the client, including:
