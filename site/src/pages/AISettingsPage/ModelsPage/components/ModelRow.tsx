@@ -10,6 +10,7 @@ import { ProviderIcon } from "#/pages/AISettingsPage/ProvidersPage/components/Pr
 type ModelRowProps = {
 	model: ChatModelConfig;
 	providerLabel: string;
+	hasProvider: boolean;
 	onClick: () => void;
 };
 
@@ -23,6 +24,7 @@ const formatContextLimit = (contextLimit: number): string => {
 export const ModelRow: FC<ModelRowProps> = ({
 	model,
 	providerLabel,
+	hasProvider,
 	onClick,
 }) => {
 	const clickableProps = useClickableTableRow({ onClick });
@@ -51,7 +53,7 @@ export const ModelRow: FC<ModelRowProps> = ({
 					className="block truncate text-sm font-medium leading-6 text-content-secondary"
 					title={providerLabel}
 				>
-					{providerLabel || "N/A"}
+					{hasProvider ? providerLabel : "Disconnected"}
 				</span>
 			</TableCell>
 			<TableCell className="min-w-0">
