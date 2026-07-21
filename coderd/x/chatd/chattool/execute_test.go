@@ -1171,6 +1171,122 @@ func TestExecuteToolClientToken(t *testing.T) {
 	})
 }
 
+func TestExecuteToolInterruptKill(t *testing.T) {
+	t.Parallel()
+
+	// interruptedWait wires StartProcess to succeed and the process
+	// wait (plus its recovery snapshot) to fail after canceling the
+	// tool context with cause.
+	interruptedWait := func(mockConn *agentconnmock.MockAgentConn, cancel context.CancelCauseFunc, cause error) {
+		mockConn.EXPECT().
+			StartProcess(gomock.Any(), gomock.Any()).
+			Return(workspacesdk.StartProcessResponse{ID: "proc-1", Started: true}, nil)
+		mockConn.EXPECT().
+			ProcessOutput(gomock.Any(), "proc-1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *workspacesdk.ProcessOutputOptions) (workspacesdk.ProcessOutputResponse, error) {
+				cancel(cause)
+				return workspacesdk.ProcessOutputResponse{}, xerrors.New("request canceled")
+			}).
+			Times(2)
+	}
+	runForeground := func(t *testing.T, ctx context.Context, mockConn *agentconnmock.MockAgentConn) chattool.ExecuteResult {
+		t.Helper()
+		tool := newExecuteTool(t, mockConn)
+		resp, err := tool.Run(ctx, fantasy.ToolCall{
+			ID:    "call-1",
+			Name:  "execute",
+			Input: `{"command":"sleep 60"}`,
+		})
+		require.NoError(t, err)
+		var result chattool.ExecuteResult
+		require.NoError(t, json.Unmarshal([]byte(resp.Content), &result))
+		return result
+	}
+
+	t.Run("UserInterruptKillsForegroundProcess", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		ctx, cancel := context.WithCancelCause(testutil.Context(t, testutil.WaitMedium))
+		defer cancel(nil)
+
+		interruptedWait(mockConn, cancel, chattool.ErrUserInterrupt)
+		mockConn.EXPECT().
+			SignalProcess(gomock.Any(), "proc-1", "kill").
+			Return(nil)
+
+		result := runForeground(t, ctx, mockConn)
+		assert.False(t, result.Success)
+	})
+
+	t.Run("KillTreatsExitedProcessAsGone", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		ctx, cancel := context.WithCancelCause(testutil.Context(t, testutil.WaitMedium))
+		defer cancel(nil)
+
+		interruptedWait(mockConn, cancel, chattool.ErrUserInterrupt)
+		// 409 means the process already exited; the kill treats it
+		// as already gone instead of failing.
+		mockConn.EXPECT().
+			SignalProcess(gomock.Any(), "proc-1", "kill").
+			Return(codersdk.NewError(http.StatusConflict, codersdk.Response{
+				Message: "Process is not running.",
+			}))
+
+		result := runForeground(t, ctx, mockConn)
+		assert.False(t, result.Success)
+	})
+
+	t.Run("AttemptTimeoutDoesNotKill", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		ctx, cancel := context.WithCancelCause(testutil.Context(t, testutil.WaitMedium))
+		defer cancel(nil)
+
+		// Any non-interrupt cause (attempt watchdog timeout, worker
+		// shutdown) must leave the process running for re-attach, so
+		// no SignalProcess call is expected.
+		interruptedWait(mockConn, cancel, xerrors.New("chatworker task timeout"))
+
+		result := runForeground(t, ctx, mockConn)
+		assert.False(t, result.Success)
+		assert.Equal(t, "proc-1", result.BackgroundProcessID)
+	})
+
+	t.Run("BackgroundProcessSpared", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockConn := agentconnmock.NewMockAgentConn(ctrl)
+		ctx, cancel := context.WithCancelCause(testutil.Context(t, testutil.WaitMedium))
+		defer cancel(nil)
+
+		// The user interrupt lands right after the background start;
+		// no SignalProcess call is expected.
+		mockConn.EXPECT().
+			StartProcess(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, req workspacesdk.StartProcessRequest) (workspacesdk.StartProcessResponse, error) {
+				assert.True(t, req.Background)
+				cancel(chattool.ErrUserInterrupt)
+				return workspacesdk.StartProcessResponse{ID: "proc-bg", Started: true}, nil
+			})
+
+		tool := newExecuteTool(t, mockConn)
+		resp, err := tool.Run(ctx, fantasy.ToolCall{
+			ID:    "call-1",
+			Name:  "execute",
+			Input: `{"command":"sleep 60","run_in_background":true}`,
+		})
+		require.NoError(t, err)
+		var result chattool.ExecuteResult
+		require.NoError(t, json.Unmarshal([]byte(resp.Content), &result))
+		assert.True(t, result.Success)
+		assert.Equal(t, "proc-bg", result.BackgroundProcessID)
+	})
+}
+
 // newExecuteTool creates an Execute tool wired to the given mock.
 func newExecuteTool(t *testing.T, mockConn *agentconnmock.MockAgentConn) fantasy.AgentTool {
 	t.Helper()

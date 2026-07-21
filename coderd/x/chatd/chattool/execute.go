@@ -38,7 +38,20 @@ const (
 	// early, so a short agent-side wait cannot degenerate into a
 	// zero-delay request loop.
 	processWaitRetryDelay = time.Second
+
+	// killSignalTimeout bounds the detached best-effort kill sent
+	// when a user interrupt unwinds a foreground execute call.
+	killSignalTimeout = 5 * time.Second
 )
+
+// ErrUserInterrupt is the cancellation cause chatd uses when a user
+// action (interrupt, edit, or a message sent with interrupt)
+// supersedes the running turn. The execute tool kills its foreground
+// process only on this cause: every other cancellation (attempt
+// watchdog timeout, worker shutdown, runner rebalancing) leaves the
+// process running so a replay can re-attach through its idempotency
+// token.
+var ErrUserInterrupt = xerrors.New("chat turn superseded by a user action")
 
 // ExecuteIdentity identifies one execute tool call across replays:
 // the chat and the assistant message that issued the call, combined
@@ -265,6 +278,34 @@ func startProcessResolvingTokenWait(ctx context.Context, conn workspacesdk.Agent
 	}
 }
 
+func isNotFoundError(err error) bool {
+	var sdkErr *codersdk.Error
+	return xerrors.As(err, &sdkErr) && sdkErr.StatusCode() == http.StatusNotFound
+}
+
+// killOnUserInterrupt best-effort kills a foreground process whose
+// wait unwound because the user superseded the turn. It is a no-op
+// for every other cancellation cause. The signal rides a detached,
+// bounded context because the tool context is already canceled. A
+// 404 (process unknown) or 409 (already exited) answer means the
+// process is already gone; other failures are logged and dropped,
+// leaving the process visible and killable in the process list.
+func killOnUserInterrupt(ctx context.Context, conn workspacesdk.AgentConn, processID string, logger slog.Logger) {
+	if !xerrors.Is(context.Cause(ctx), ErrUserInterrupt) {
+		return
+	}
+	killCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), killSignalTimeout)
+	defer cancel()
+	err := conn.SignalProcess(killCtx, processID, "kill")
+	if err == nil || isNotFoundError(err) || isConflictError(err) {
+		return
+	}
+	logger.Warn(ctx, "failed to kill foreground process on user interrupt",
+		slog.F("process_id", processID),
+		slog.Error(err),
+	)
+}
+
 // startConflictResult converts a token conflict into an error
 // result. A parameter mismatch is permanent: the token's earlier
 // start recorded different parameters, and no new process was
@@ -385,6 +426,11 @@ func executeForeground(
 		}
 	} else {
 		result = waitForProcess(cmdCtx, ctx, conn, resp.ID, timeout)
+	}
+	if result.BackgroundProcessID != "" {
+		// The wait ended without observing an exit; a command a
+		// user interrupt abandoned is unwanted, so kill it.
+		killOnUserInterrupt(ctx, conn, resp.ID, options.Logger)
 	}
 	// An attached start anchored to an agent clock that runs ahead
 	// can place start in the future; clamp instead of reporting a

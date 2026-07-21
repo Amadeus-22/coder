@@ -923,6 +923,14 @@ Attached foreground starts also return the process's original start time. The re
 
 This is at-least-once execution with best-effort deduplication. The token index does not survive agent restarts, entries are reaped 60 minutes after process exit, and agents that predate the token API ignore it entirely; in all of those cases a replay runs the command again.
 
+### Interrupt kill
+
+When a user action supersedes a running turn (an interrupt, an edit, or a message sent with `busy_behavior=interrupt`), the runner cancels the active task with the `chattool.ErrUserInterrupt` cause. A foreground `execute` call unwinding on that cause sends a best-effort kill signal for its process on a detached, bounded context: the user asked for the work to stop, and the command would otherwise keep running behind a result nobody reads. A 404 or 409 answer means the process is already gone. Background processes are deliberately spared; they are addressable through their handle and the process list.
+
+Every other cancellation kills nothing: an attempt watchdog timeout, worker shutdown, or runner rebalancing cancels without the interrupt cause, leaving the process running so the replay re-attaches through its idempotency token.
+
+The kill is best-effort. If the `StartProcess` response was lost, the agent is unreachable, or the worker dies before unwinding, the process keeps running but stays visible and killable through the process list.
+
 # Stream loop
 
 The stream loop powers the `GET /api/experimental/chats/{chat}/stream` endpoint. It is scoped to one chat and one client WebSocket. It's responsible for delivering a stream of chat updates to the client, including:
