@@ -911,12 +911,28 @@ type StartProcessRequest struct {
 	WorkDir    string            `json:"workdir,omitempty"`
 	Env        map[string]string `json:"env,omitempty"`
 	Background bool              `json:"background,omitempty"`
+	// ClientToken is an optional idempotency token: a repeated
+	// token attaches to the process it already started instead
+	// of spawning a duplicate. Dedup is in-memory, time-limited,
+	// and rejects reuse with different parameters.
+	ClientToken string `json:"client_token,omitempty"`
 }
 
 // StartProcessResponse is returned when a process is started.
 type StartProcessResponse struct {
-	ID      string `json:"id"`
-	Started bool   `json:"started"`
+	ID string `json:"id"`
+	// Started is true when this request started a new process.
+	Started bool `json:"started"`
+	// ClientToken echoes the accepted idempotency token; agents
+	// that predate idempotent starts omit it.
+	ClientToken string `json:"client_token,omitempty"`
+	// Attached is true when an existing process started with the
+	// same token was returned instead of starting a new one.
+	Attached bool `json:"attached,omitempty"`
+	// StartedAt is the unix timestamp (in seconds) when the
+	// process originally started; agents that predate idempotent
+	// starts omit it.
+	StartedAt int64 `json:"started_at,omitempty"`
 }
 
 // ListProcessesResponse contains information about tracked
