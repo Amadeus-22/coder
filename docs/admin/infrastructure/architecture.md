@@ -133,12 +133,26 @@ AI-powered development within Coder workspaces.
 
 ### AI Gateway
 
-AI Gateway is a centralized gateway that sits between coding agents and LLM providers such
-as OpenAI and Anthropic. Users authenticate through Coder instead of managing separate
-provider API keys. All prompts, token usage, and tool invocations are recorded
-for compliance and cost tracking.
+AI Gateway is a centralized service between AI clients and LLM providers such as OpenAI and Anthropic.
+Users authenticate through Coder instead of managing separate provider API keys.
+AI Gateway records prompts, token usage, model reasoning when available, and tool invocations for compliance and cost tracking.
 
-Learn more: [AI Gateway](../../ai-coder/ai-gateway/index.md)
+AI Gateway supports 2 deployment topologies:
+
+- **Embedded:** `coderd` runs the AI Gateway data plane in its own process.
+- **Standalone:** AI Gateway runs outside `coderd`; you can place multiple replicas behind a load balancer.
+
+In standalone mode, each replica serves AI traffic and sends requests directly to upstream providers.
+Each replica also maintains a control connection to `coderd` for user and credential validation, provider and MCP configuration, budget checks, and AI session recording.
+`coderd` remains the source of truth and the only component that writes durable AI Gateway state to PostgreSQL.
+
+Standalone replicas do not own authoritative database state.
+They keep ephemeral provider snapshots, request caches, provider key pools, and metrics in memory, and emit their own logs and traces.
+Replicas can also write request and response dumps to local disk when debugging dumps are enabled.
+You can scale, restart, and upgrade the data plane independently from `coderd`.
+The replicas become unready when the control connection is unavailable, so standalone data-plane availability still depends on a reachable Coder control plane.
+
+Refer to [AI Gateway](../../ai-coder/ai-gateway/index.md) and [standalone deployment](../../ai-coder/ai-gateway/standalone.md) for configuration and operational guidance.
 
 ### Agent Firewall
 
