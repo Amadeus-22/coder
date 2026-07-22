@@ -1202,6 +1202,12 @@
 									"state": ["ai governance add-on"]
 								},
 								{
+									"title": "Standalone Deployment",
+									"description": "Deploy and operate AI Gateway as a standalone service",
+									"path": "./ai-coder/ai-gateway/standalone.md",
+									"state": ["ai governance add-on"]
+								},
+								{
 									"title": "Authentication",
 									"description": "Learn how to authenticate against AI Gateway",
 									"path": "./ai-coder/ai-gateway/auth.md",
