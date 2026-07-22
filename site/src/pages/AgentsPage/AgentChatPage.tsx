@@ -1511,15 +1511,7 @@ const AgentChatPage: FC = () => {
 				await compact();
 			} catch (error) {
 				restoreOptimisticRequestSnapshot(store, previousSnapshot);
-				if (
-					isApiError(error) &&
-					error.response?.status === 409 &&
-					isChatUsageLimitExceededResponse(error.response.data)
-				) {
-					handleUsageLimitError(error);
-				} else {
-					toast.error(getErrorMessage(error, "Failed to compact chat."));
-				}
+				toast.error(getErrorMessage(error, "Failed to compact chat."));
 				throw error;
 			}
 			return;
