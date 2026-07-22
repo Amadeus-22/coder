@@ -81,7 +81,7 @@ export const initialWizardState: TemplateBuilderWizardState = {
 };
 
 /** Arguments for building a fresh wizard state on mount. */
-export type WizardInit = {
+type WizardInit = {
 	/** Optional base template to preselect (from the ?base= param). */
 	preselectedBase?: SelectedBaseMeta;
 	/** Stable session ID shared across telemetry events for this mount. */
