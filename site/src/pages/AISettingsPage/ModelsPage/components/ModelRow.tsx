@@ -29,6 +29,8 @@ export const ModelRow: FC<ModelRowProps> = ({
 }) => {
 	const clickableProps = useClickableTableRow({ onClick });
 	const displayName = model.display_name || model.model;
+	// Models without a provider should always be shown as disabled
+	const isEffectivelyEnabled = model.enabled && hasProvider;
 
 	return (
 		<TableRow {...clickableProps}>
@@ -65,7 +67,7 @@ export const ModelRow: FC<ModelRowProps> = ({
 				<div className="flex flex-wrap items-center gap-2">
 					{model.is_default && <Badge variant="default">Default</Badge>}
 					<Badge variant="default">
-						{model.enabled ? "Enabled" : "Disabled"}
+						{isEffectivelyEnabled ? "Enabled" : "Disabled"}
 					</Badge>
 				</div>
 			</TableCell>

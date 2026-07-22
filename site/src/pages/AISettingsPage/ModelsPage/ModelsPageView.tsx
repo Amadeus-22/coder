@@ -104,7 +104,10 @@ const ModelsPageView: FC<ModelsPageViewProps> = ({
 	for (const providerState of providerStates) {
 		for (const providerModel of providerState.modelConfigs) {
 			providerLabelByModelId.set(providerModel.id, providerState.label);
-			modelHasProviderById.set(providerModel.id, Boolean(providerState.providerConfig));
+			modelHasProviderById.set(
+				providerModel.id,
+				Boolean(providerState.providerConfig),
+			);
 		}
 	}
 
@@ -149,17 +152,16 @@ const ModelsPageView: FC<ModelsPageViewProps> = ({
 									align="start"
 								/>
 							}
-						) : (
-							pagedItems.map((model) => (
-								<ModelRow
-									key={model.id}
-									model={model}
-									providerLabel={providerLabelByModelId.get(model.id) ?? ""}
-									hasProvider={modelHasProviderById.get(model.id) ?? false}
-									onClick={() => void navigate(`/ai/settings/models/${model.id}`)}
-								/>
-							))
-						)}
+						/>
+					) : (
+						pagedItems.map((model) => (
+							<ModelRow
+								key={model.id}
+								model={model}
+								providerLabel={providerLabelByModelId.get(model.id) ?? ""}
+								hasProvider={modelHasProviderById.get(model.id) ?? false}
+								onClick={() => void navigate(`/ai/settings/models/${model.id}`)}
+							/>
 						))
 					)}
 				</TableBody>
