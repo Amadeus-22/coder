@@ -7539,10 +7539,27 @@ func (api *API) updateChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 		enabled = *req.Enabled
 	}
 
-	// Prevent enabling models without a provider
+	// Prevent enabling models without a provider or with a soft-deleted provider.
 	if enabled && !aiProviderID.Valid {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: "Cannot enable a model without a provider."})
 		return
+	}
+	if enabled && aiProviderID.Valid {
+		// Verify the provider exists and is not soft-deleted.
+		//nolint:gocritic // The route already authorized chat model config updates.
+		provider, err := api.Database.GetAIProviderByID(dbauthz.AsChatd(ctx), aiProviderID.UUID)
+		if err != nil {
+			if xerrors.Is(err, sql.ErrNoRows) {
+				httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: "The provider for this model no longer exists."})
+				return
+			}
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{Message: "Failed to verify provider.", Detail: err.Error()})
+			return
+		}
+		if provider.Deleted {
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: "The provider for this model has been deleted."})
+			return
+		}
 	}
 	isDefault := existing.IsDefault
 	if req.IsDefault != nil {

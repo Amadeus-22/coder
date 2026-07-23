@@ -66,7 +66,7 @@ export const ModelRow: FC<ModelRowProps> = ({
 					className="block truncate text-sm font-medium leading-6 text-content-secondary"
 					title={providerLabel}
 				>
-					{hasProvider ? providerLabel : "Disconnected"}
+					{hasProvider ? providerLabel : "Unset"}
 				</span>
 			</TableCell>
 			<TableCell className="min-w-0">
