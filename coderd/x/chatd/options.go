@@ -75,8 +75,8 @@ type chatWorkerOptions struct {
 	TaskStarter       chatWorkerTaskStarter
 	MessagePartBuffer *messagepartbuffer.Buffer
 	// AgentLimiter caps concurrently executing agentic loops. Nil
-	// defaults to a limiter with no entitlements, so the cap applies.
-	AgentLimiter *agentLimiter
+	// defaults to an uncapped no-op limiter.
+	AgentLimiter AgentLimiter
 
 	NotificationsEnqueuer notifications.Enqueuer
 	Auditor               *atomic.Pointer[audit.Auditor]
@@ -114,10 +114,7 @@ func (o chatWorkerOptions) withDefaults() (chatWorkerOptions, error) {
 		o.Clock = quartz.NewReal()
 	}
 	if o.AgentLimiter == nil {
-		o.AgentLimiter = newAgentLimiter(agentLimiterOptions{
-			Clock:  o.Clock,
-			Logger: o.Logger,
-		})
+		o.AgentLimiter = nopAgentLimiter{}
 	}
 	if o.AcquisitionInterval <= 0 {
 		o.AcquisitionInterval = defaultAcquisitionInterval

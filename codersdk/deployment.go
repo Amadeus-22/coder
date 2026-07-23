@@ -201,8 +201,8 @@ const (
 	FeatureAIGovernanceUserLimit  FeatureName = "ai_governance_user_limit"
 	// FeatureUnlimitedChatAgents lifts the built-in cap on concurrently
 	// executing chatd agentic loops (chat turns, including chat
-	// subagents). Deployments without this feature are limited to
-	// chatd.MaxConcurrentAgents concurrent loops per replica.
+	// subagents). Deployments without this feature are limited to a
+	// small fixed number of concurrent loops per replica.
 	FeatureUnlimitedChatAgents FeatureName = "unlimited_chat_agents"
 )
 

@@ -222,6 +222,11 @@ func New(ctx context.Context, options *Options) (_ *API, err error) {
 		},
 	})
 
+	// Cap concurrent chatd agents on deployments not entitled to
+	// unlimited chat agents. The limiter implementation lives in the
+	// enterprise-licensed package.
+	options.Options.ChatAgentLimiterFactory = entchatd.NewAgentLimiterFactory(options.Entitlements)
+
 	api.AGPL = coderd.New(options.Options)
 	api.aiSeatTracker = aiseats.New(options.Database, api.Logger.Named("aiseats"), quartz.NewReal(), &api.AGPL.Auditor)
 	api.AGPL.AISeatTracker = api.aiSeatTracker

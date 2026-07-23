@@ -32,7 +32,6 @@ import (
 	"github.com/coder/coder/v2/coderd/database/db2sdk"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
 	"github.com/coder/coder/v2/coderd/database/pubsub"
-	"github.com/coder/coder/v2/coderd/entitlements"
 	"github.com/coder/coder/v2/coderd/notifications"
 	coderdpubsub "github.com/coder/coder/v2/coderd/pubsub"
 	"github.com/coder/coder/v2/coderd/rbac"
@@ -2902,11 +2901,10 @@ type Config struct {
 
 	PrometheusRegistry prometheus.Registerer
 
-	// Entitlements gates the concurrent-agent cap: deployments entitled
-	// to codersdk.FeatureUnlimitedChatAgents bypass it. Nil defaults to
-	// an unlicensed set, so at most MaxConcurrentAgents agentic loops
-	// execute concurrently per replica.
-	Entitlements *entitlements.Set
+	// AgentLimiterFactory constructs the concurrent-agent limiter for
+	// the chat worker. Set by enterprise; nil leaves agentic loops
+	// uncapped.
+	AgentLimiterFactory AgentLimiterFactory
 
 	// OIDCTokenSource resolves the calling user's OIDC access
 	// token for MCP servers configured with auth_type=user_oidc.
@@ -3031,18 +3029,13 @@ func New(ps pubsub.Pubsub, cfg Config) *Server {
 	p.streamSyncPoller = newStreamSyncPoller(ctx, cfg.Database, clk, cfg.Logger.Named("chatstream"))
 	p.streamSyncPoller.Start()
 	chatWorker, err := newChatWorker(p, chatWorkerOptions{
-		WorkerID:          workerID,
-		Store:             cfg.Database,
-		Pubsub:            ps,
-		Logger:            cfg.Logger.Named("chatworker"),
-		Clock:             clk,
-		MessagePartBuffer: p.messagePartBuffer,
-		AgentLimiter: newAgentLimiter(agentLimiterOptions{
-			Entitlements: cfg.Entitlements,
-			Clock:        clk,
-			Logger:       cfg.Logger.Named("chatworker"),
-			Registerer:   cfg.PrometheusRegistry,
-		}),
+		WorkerID:              workerID,
+		Store:                 cfg.Database,
+		Pubsub:                ps,
+		Logger:                cfg.Logger.Named("chatworker"),
+		Clock:                 clk,
+		MessagePartBuffer:     p.messagePartBuffer,
+		AgentLimiter:          agentLimiterFromFactory(cfg, clk),
 		AcquisitionInterval:   pendingChatAcquireInterval,
 		AcquisitionBatchSize:  maxChatsPerAcquire,
 		HeartbeatInterval:     chatHeartbeatInterval,

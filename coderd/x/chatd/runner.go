@@ -60,7 +60,7 @@ type runner struct {
 	// lease is this chat's hold on a concurrent-agent slot. Generation
 	// tasks acquire it, turn boundaries release it, and teardown closes
 	// it unconditionally.
-	lease *agentSlotLease
+	lease AgentSlotLease
 }
 
 func newRunner(ctx context.Context, mgr *runnerManager, rec *runnerRecord, opts chatWorkerOptions) *runner {
@@ -73,7 +73,7 @@ func newRunner(ctx context.Context, mgr *runnerManager, rec *runnerRecord, opts 
 		tasksByIndex: make(map[taskIndexKey]taskInstanceID),
 		localLocks:   newLocalLockSet(),
 		debugTurn:    newRunnerDebugTurn(ctx, opts.Logger),
-		lease:        opts.AgentLimiter.newLease(rec.key.ChatID),
+		lease:        opts.AgentLimiter.NewLease(rec.key.ChatID),
 	}
 }
 
@@ -292,7 +292,7 @@ func (r *runner) runTask(
 			if err := r.lease.EnsureHeld(ctx); err != nil {
 				return errors.Join(errTaskExpectedExit, xerrors.Errorf("runTask ensure agent slot: %w", err))
 			}
-			return r.opts.TaskStarter.StartGeneration(r.lease.attachToContext(ctx), input)
+			return r.opts.TaskStarter.StartGeneration(r.lease.AttachToContext(ctx), input)
 		case taskKindInterrupt:
 			return r.opts.TaskStarter.StartInterrupt(ctx, input)
 		case taskKindRequiresActionTimeout:
