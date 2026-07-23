@@ -107,6 +107,13 @@ func (l *fakeAgentSlotLease) EnsureHeld(ctx context.Context) error {
 	}
 }
 
+// Reacquire never blocks: the fake's admission gate models turn
+// admission (EnsureHeld), not the lost-slot recovery path.
+func (l *fakeAgentSlotLease) Reacquire(context.Context) error {
+	l.record("reacquire")
+	return nil
+}
+
 func (l *fakeAgentSlotLease) MarkTurnComplete() { l.record("turn_complete") }
 func (l *fakeAgentSlotLease) Close()            { l.record("close") }
 
@@ -248,6 +255,46 @@ func TestWorker_AgentLimiterClosesLeaseOnShutdown(t *testing.T) {
 
 	require.NoError(t, worker.Close())
 	limiter.lease(chat.ID).waitForEvent(t, "close")
+}
+
+// failOnceStarter fails the first StartGeneration with a retryable
+// error and records subsequent calls normally.
+type failOnceStarter struct {
+	*recordingTaskStarter
+	mu     sync.Mutex
+	failed bool
+}
+
+func (s *failOnceStarter) StartGeneration(ctx context.Context, input chatWorkerTaskStartInput) error {
+	s.mu.Lock()
+	first := !s.failed
+	s.failed = true
+	s.mu.Unlock()
+	if first {
+		return xerrors.New("transient generation failure")
+	}
+	return s.recordingTaskStarter.StartGeneration(ctx, input)
+}
+
+// TestWorker_AgentLimiterRetryReacquires pins that generation retries
+// re-check the slot through Reacquire rather than EnsureHeld, so a
+// retry never yields a pending turn-complete release back to the
+// waiter queue.
+func TestWorker_AgentLimiterRetryReacquires(t *testing.T) {
+	t.Parallel()
+	f := newWorkerTestFixture(t)
+	starter := &failOnceStarter{recordingTaskStarter: newRecordingTaskStarter()}
+	opts, limiter := testFakeLimiterOptions(t, f, starter)
+	opts.TaskRetryInitialBackoff = time.Millisecond
+
+	chat := f.createRunningChat(t)
+	limiter.admit(chat.ID)
+	startWorker(t, opts)
+
+	starter.waitCall(t, taskKindGeneration, chat.ID)
+	events := limiter.lease(chat.ID).snapshot()
+	require.Equal(t, 1, countEvents(events, "ensure_held"))
+	require.GreaterOrEqual(t, countEvents(events, "reacquire"), 2)
 }
 
 // leaseHandleStarter simulates a wait_agent tool call: its generation

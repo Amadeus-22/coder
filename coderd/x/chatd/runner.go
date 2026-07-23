@@ -288,9 +288,12 @@ func (r *runner) runTask(
 		switch kind {
 		case taskKindGeneration:
 			// Re-acquire when a failed Resume after wait_agent left the
-			// lease unheld; a no-op while the slot is held.
-			if err := r.lease.EnsureHeld(ctx); err != nil {
-				return errors.Join(errTaskExpectedExit, xerrors.Errorf("runTask ensure agent slot: %w", err))
+			// lease unheld; a no-op while the slot is held. Reacquire
+			// (not EnsureHeld) so a retry after a committed transition
+			// does not yield and re-queue for a slot it will only exit
+			// on the task fence with.
+			if err := r.lease.Reacquire(ctx); err != nil {
+				return errors.Join(errTaskExpectedExit, xerrors.Errorf("runTask reacquire agent slot: %w", err))
 			}
 			return r.opts.TaskStarter.StartGeneration(r.lease.AttachToContext(ctx), input)
 		case taskKindInterrupt:

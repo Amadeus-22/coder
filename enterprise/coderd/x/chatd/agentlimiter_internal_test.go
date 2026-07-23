@@ -240,6 +240,47 @@ func TestAgentSlotLease_TurnCompleteDeferredUntilTaskExit(t *testing.T) {
 	require.Zero(t, promtestutil.ToFloat64(limiter.slotsInUse))
 }
 
+func TestAgentSlotLease_ReacquireKeepsPendingRelease(t *testing.T) {
+	t.Parallel()
+	ctx := testutil.Context(t, testutil.WaitShort)
+	limiter := newTestAgentLimiter(t, 1, nil)
+
+	lease := limiter.leaseForTest(uuid.New())
+	lease.BeginTask()
+	require.NoError(t, lease.EnsureHeld(ctx))
+	lease.MarkTurnComplete()
+
+	// A doomed retry keeps the slot instead of yielding and blocking on
+	// a re-queue it would only exit the task fence with.
+	require.NoError(t, lease.Reacquire(ctx))
+	require.True(t, leaseHoldsUnit(lease))
+
+	// The pending release still happens at task exit.
+	lease.EndTask()
+	require.False(t, leaseHoldsUnit(lease))
+}
+
+func TestAgentSlotLease_ReacquireAfterFailedResume(t *testing.T) {
+	t.Parallel()
+	ctx := testutil.Context(t, testutil.WaitShort)
+	limiter := newTestAgentLimiter(t, 1, nil)
+
+	lease := limiter.leaseForTest(uuid.New())
+	require.NoError(t, lease.EnsureHeld(ctx))
+	lease.Pause()
+
+	// A failed Resume leaves the lease unheld; Reacquire recovers it.
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	require.ErrorIs(t, lease.Resume(canceledCtx), context.Canceled)
+	require.False(t, leaseHoldsUnit(lease))
+	require.NoError(t, lease.Reacquire(ctx))
+	require.True(t, leaseHoldsUnit(lease))
+
+	lease.Close()
+	require.ErrorIs(t, lease.Reacquire(ctx), errAgentSlotLeaseClosed)
+}
+
 func TestAgentSlotLease_EnsureHeldYieldsPendingRelease(t *testing.T) {
 	t.Parallel()
 	ctx := testutil.Context(t, testutil.WaitShort)

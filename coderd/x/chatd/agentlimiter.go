@@ -49,6 +49,13 @@ type AgentSlotLease interface {
 	// canceled. A pending MarkTurnComplete release is honored first, so
 	// a new turn queues behind other waiting chats.
 	EnsureHeld(ctx context.Context) error
+	// Reacquire re-obtains the slot when a failed Resume left the
+	// lease unheld; it is a no-op while the slot is held. Unlike
+	// EnsureHeld it never yields a pending turn-complete release: a
+	// retry after a committed transition keeps the slot, exits on the
+	// task fence, and the release happens at task exit instead of
+	// through a wasted requeue.
+	Reacquire(ctx context.Context) error
 	// MarkTurnComplete flags the current turn's slot hold for release.
 	// The release happens immediately when no generation task is
 	// executing, and otherwise when the last in-flight task exits.
@@ -132,6 +139,7 @@ type nopAgentSlotLease struct{}
 func (nopAgentSlotLease) BeginTask()                       {}
 func (nopAgentSlotLease) EndTask()                         {}
 func (nopAgentSlotLease) EnsureHeld(context.Context) error { return nil }
+func (nopAgentSlotLease) Reacquire(context.Context) error  { return nil }
 func (nopAgentSlotLease) MarkTurnComplete()                {}
 func (nopAgentSlotLease) Close()                           {}
 func (nopAgentSlotLease) AttachToContext(ctx context.Context) context.Context {

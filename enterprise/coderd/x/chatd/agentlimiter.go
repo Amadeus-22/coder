@@ -257,6 +257,25 @@ func (l *agentSlotLease) EnsureHeld(ctx context.Context) error {
 	return l.acquire(ctx)
 }
 
+// Reacquire acquires only when a failed Resume left the lease unheld.
+// It intentionally ignores a pending turn-complete release so a doomed
+// retry after a committed transition exits on the task fence without
+// yielding and re-queueing; the pending release then happens at task
+// exit.
+func (l *agentSlotLease) Reacquire(ctx context.Context) error {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return errAgentSlotLeaseClosed
+	}
+	if l.holdsUnit {
+		l.mu.Unlock()
+		return nil
+	}
+	l.mu.Unlock()
+	return l.acquire(ctx)
+}
+
 // acquire obtains a unit (or the entitlement bypass) and installs it on
 // the lease. When a concurrent Close, acquire, or Pause won the race,
 // the extra unit is returned to the limiter.
