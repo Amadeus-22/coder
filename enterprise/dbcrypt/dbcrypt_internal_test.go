@@ -98,32 +98,6 @@ func TestUserLinks(t *testing.T) {
 		require.EqualValues(t, expectedClaims, rawLink.Claims)
 	})
 
-	t.Run("UpdateExternalAuthLinkRefreshToken", func(t *testing.T) {
-		t.Parallel()
-		db, crypt, ciphers := setup(t)
-		user := dbgen.User(t, crypt, database.User{})
-		link := dbgen.ExternalAuthLink(t, crypt, database.ExternalAuthLink{
-			UserID: user.ID,
-		})
-
-		err := crypt.UpdateExternalAuthLinkRefreshToken(ctx, database.UpdateExternalAuthLinkRefreshTokenParams{
-			OAuthRefreshToken:      "",
-			OAuthRefreshTokenKeyID: link.OAuthRefreshTokenKeyID.String,
-			OldOauthRefreshToken:   link.OAuthRefreshToken,
-			UpdatedAt:              dbtime.Now(),
-			ProviderID:             link.ProviderID,
-			UserID:                 link.UserID,
-		})
-		require.NoError(t, err)
-
-		rawLink, err := db.GetExternalAuthLink(ctx, database.GetExternalAuthLinkParams{
-			ProviderID: link.ProviderID,
-			UserID:     link.UserID,
-		})
-		require.NoError(t, err)
-		requireEncryptedEquals(t, ciphers[0], rawLink.OAuthRefreshToken, "")
-	})
-
 	t.Run("GetUserLinkByLinkedID", func(t *testing.T) {
 		t.Parallel()
 		t.Run("OK", func(t *testing.T) {

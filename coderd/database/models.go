@@ -5310,6 +5310,8 @@ type ExternalAuthLink struct {
 	OAuthExtra             pqtype.NullRawMessage `db:"oauth_extra" json:"oauth_extra"`
 	// This error means the refresh token is invalid. Cached so we can avoid calling the external provider again for the same error.
 	OauthRefreshFailureReason string `db:"oauth_refresh_failure_reason" json:"oauth_refresh_failure_reason"`
+	// Use to hold a lease on the row to prevent concurrent refreshes.
+	RefreshLeaseExpiresAt sql.NullTime `db:"refresh_lease_expires_at" json:"refresh_lease_expires_at"`
 }
 
 type File struct {
