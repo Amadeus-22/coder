@@ -4907,6 +4907,120 @@ func TestUpdateChatModelConfig(t *testing.T) {
 		require.Equal(t, "Invalid chat model config ID.", sdkErr.Message)
 	})
 
+	t.Run("RejectsEnableWithoutProvider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		// Create a model with no provider
+		modelConfig := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
+			Model:        "some-orphaned-model",
+			AIProviderID: uuid.NullUUID{Valid: false},
+		})
+
+		// Attempt to enable it should fail
+		enabled := true
+		_, err := client.UpdateChatModelConfig(ctx, modelConfig.ID, codersdk.UpdateChatModelConfigRequest{
+			Enabled: &enabled,
+		})
+		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+		require.Equal(t, "Cannot enable a model without a provider.", sdkErr.Message)
+	})
+
+	t.Run("RejectsEnableWithDeletedProvider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		// Create a provider
+		aiProvider, err := client.CreateAIProvider(ctx, codersdk.CreateAIProviderRequest{
+			Type:    codersdk.AIProviderTypeOpenAI,
+			Name:    "test-provider",
+			Enabled: true,
+			APIKeys: []string{"test-key"},
+		})
+		require.NoError(t, err)
+
+		// Create a model config with the provider
+		modelConfig := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
+			Model:        "gpt-4o",
+			AIProviderID: uuid.NullUUID{UUID: aiProvider.ID, Valid: true},
+		})
+
+		// Delete the provider via the API (soft-delete)
+		err = client.DeleteAIProvider(ctx, aiProvider.ID.String())
+		require.NoError(t, err)
+
+		// Attempt to enable the model with deleted provider should fail
+		enabled := true
+		_, err = client.UpdateChatModelConfig(ctx, modelConfig.ID, codersdk.UpdateChatModelConfigRequest{
+			Enabled: &enabled,
+		})
+		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+		require.Equal(t, "The provider for this model has been deleted.", sdkErr.Message)
+	})
+
+	t.Run("RejectsEnableWithoutProvider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		// Create a model with no provider
+		modelConfig := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
+			Model:        "some-orphaned-model",
+			AIProviderID: uuid.NullUUID{Valid: false},
+		})
+
+		// Attempt to enable it should fail
+		enabled := true
+		_, err := client.UpdateChatModelConfig(ctx, modelConfig.ID, codersdk.UpdateChatModelConfigRequest{
+			Enabled: &enabled,
+		})
+		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+		require.Equal(t, "Cannot enable a model without a provider.", sdkErr.Message)
+	})
+
+	t.Run("RejectsEnableWithDeletedProvider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		// Create a provider and then soft-delete it
+		aiProvider, err := client.CreateAIProvider(ctx, codersdk.CreateAIProviderRequest{
+			Type:    codersdk.AIProviderTypeOpenAI,
+			Name:    "test-provider",
+			Enabled: true,
+			APIKeys: []string{"test-key"},
+		})
+		require.NoError(t, err)
+
+		// Create a model config with the provider
+		modelConfig := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
+			Model:        "gpt-4o",
+			AIProviderID: uuid.NullUUID{UUID: aiProvider.ID, Valid: true},
+		})
+
+		// Delete the provider via the API (soft-delete)
+		err = client.DeleteAIProvider(ctx, aiProvider.ID.String())
+		require.NoError(t, err)
+
+		// Attempt to enable the model with soft-deleted provider should fail
+		enabled := true
+		_, err = client.UpdateChatModelConfig(ctx, modelConfig.ID, codersdk.UpdateChatModelConfigRequest{
+			Enabled: &enabled,
+		})
+		sdkErr := requireSDKError(t, err, http.StatusBadRequest)
+		require.Equal(t, "The provider for this model has been deleted.", sdkErr.Message)
+	})
+
 	t.Run("ForbiddenForOrganizationMember", func(t *testing.T) {
 		t.Parallel()
 
