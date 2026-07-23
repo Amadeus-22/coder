@@ -922,7 +922,6 @@ func (s *taskStarter) enterRequiresAction(
 	input chatWorkerTaskStartInput,
 ) error {
 	var committed database.Chat
-	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForTask(ctx, store, input, database.ChatStatusRunning, taskFenceOptions{requireHistory: true}); err != nil {
 			return xerrors.Errorf("load chat for task: %w", err)
@@ -935,15 +934,12 @@ func (s *taskStarter) enterRequiresAction(
 			return xerrors.Errorf("load committed chat: %w", err)
 		}
 		committed = chat
-		transitionApplied = true
+		// External tool waits can last hours; queue the agent-slot
+		// release with the transition (see finishGenerationTurn for
+		// the ordering rationale).
+		releaseAgentSlotOnTransition(ctx)
 		return nil
 	})
-	// External tool waits can last hours; free the agent slot as soon
-	// as the transition callback succeeded, even when the post-commit
-	// publish failed (see finishGenerationTurn).
-	if transitionApplied {
-		releaseAgentSlotOnTransition(ctx)
-	}
 	if err != nil {
 		return normalizeTaskTransitionError(err, "enter requires action")
 	}
@@ -1013,7 +1009,6 @@ func (s *taskStarter) finishGenerationTurn(
 	fence generationAttemptFence,
 ) error {
 	var committed database.Chat
-	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForGeneration(ctx, store, input, fence); err != nil {
 			return xerrors.Errorf("load chat for generation: %w", err)
@@ -1026,20 +1021,20 @@ func (s *taskStarter) finishGenerationTurn(
 			decision.promotedMessageID = finishResult.PromotedMessage.ID
 		}
 		committed = finishResult.Chat
-		transitionApplied = true
+		// Queue the agent-slot release inside the callback so it is
+		// visible before Update flushes the chat:update publish: the
+		// publish is what spawns a promoted queued message's next
+		// generation task, which must observe the pending release and
+		// re-acquire at the back of the waiter queue instead of
+		// monopolizing the slot across turns. Marking before commit is
+		// benign on failure: a retry keeps the slot (Reacquire ignores
+		// the pending release) and the release happens at task exit.
+		// Marking despite a post-commit publish failure is required:
+		// the retry exits on the fence without another chance to
+		// release.
+		releaseAgentSlotOnTransition(ctx)
 		return nil
 	})
-	// Queue the agent-slot release whenever the transition callback
-	// succeeded, even if Update then failed: post-commit publish
-	// failures return an error after the turn is durably finished, and
-	// the retry exits on the fence without reaching this path again. A
-	// release after a commit failure is benign: the retry re-acquires
-	// through EnsureHeld. Releasing here also makes a promoted queued
-	// message re-acquire at the back of the waiter queue instead of
-	// monopolizing the slot across turns.
-	if transitionApplied {
-		releaseAgentSlotOnTransition(ctx)
-	}
 	if err != nil {
 		err := normalizeTaskTransitionError(err, "finish generation turn")
 		recordGenerationFinishFailure(input.DebugTurn, err)
@@ -1086,7 +1081,6 @@ func (s *taskStarter) finishGenerationError(
 	)
 	lastError, message := generationLastError(cause)
 	var committed database.Chat
-	transitionApplied := false
 	err := machine.Update(ctx, func(tx *chatstate.Tx, store database.Store) error {
 		if _, err := loadChatForGeneration(ctx, store, input, fence); err != nil {
 			return xerrors.Errorf("load chat for generation: %w", err)
@@ -1099,12 +1093,10 @@ func (s *taskStarter) finishGenerationError(
 			return xerrors.Errorf("load committed chat: %w", err)
 		}
 		committed = chat
-		transitionApplied = true
+		// See finishGenerationTurn for the release ordering rationale.
+		releaseAgentSlotOnTransition(ctx)
 		return nil
 	})
-	if transitionApplied {
-		releaseAgentSlotOnTransition(ctx)
-	}
 	if err != nil {
 		err := normalizeTaskTransitionError(err, "finish generation error")
 		recordGenerationFinishFailure(input.DebugTurn, err)

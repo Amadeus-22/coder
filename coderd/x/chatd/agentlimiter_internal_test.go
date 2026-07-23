@@ -13,6 +13,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/coder/coder/v2/coderd/database"
+	coderdpubsub "github.com/coder/coder/v2/coderd/pubsub"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatstate"
 	"github.com/coder/coder/v2/testutil"
 	"github.com/coder/quartz"
@@ -367,6 +368,60 @@ func TestWorker_DefaultAgentLimiterUncapped(t *testing.T) {
 	}
 	require.True(t, got[chatA.ID])
 	require.True(t, got[chatB.ID])
+}
+
+// TestFinishGenerationTurn_MarksReleaseBeforePublish pins that the
+// turn-complete mark is visible before the chat:update publish. The
+// publish is what spawns a promoted queued message's next generation
+// task, so a mark after it races that task's EnsureHeld and can let
+// one chat keep its slot across back-to-back turns.
+func TestFinishGenerationTurn_MarksReleaseBeforePublish(t *testing.T) {
+	t.Parallel()
+	ctx := testutil.Context(t, testutil.WaitLong)
+	f := newTaskTestFixture(t)
+	chat := f.createRunningChat(t)
+	workerID, runnerID := uuid.New(), uuid.New()
+	f.acquireChat(t, chat.ID, workerID, runnerID)
+
+	// Queue a message so FinishTurn promotes it and the chat stays
+	// running: the case with no runner-side turn-complete mark.
+	machine := chatstate.NewChatMachine(f.db, f.pubsub, chat.ID)
+	require.NoError(t, machine.Update(ctx, func(tx *chatstate.Tx, _ database.Store) error {
+		_, err := tx.SendMessage(chatstate.SendMessageInput{
+			Message:      userTextMessage(t, "queued", f.user.ID, f.model.ID, f.apiKey.ID),
+			BusyBehavior: chatstate.BusyBehaviorQueue,
+		})
+		return err
+	}))
+	current, err := f.db.GetChatByID(ctx, chat.ID)
+	require.NoError(t, err)
+
+	lease := newFakeAgentSlotLease()
+	eventsAtPublish := make(chan []string, 1)
+	unsub, err := f.rawPS.Subscribe(coderdpubsub.ChatStateUpdateChannel(chat.ID), func(_ context.Context, _ []byte) {
+		select {
+		case eventsAtPublish <- lease.snapshot():
+		default:
+		}
+	})
+	require.NoError(t, err)
+	defer unsub()
+
+	recorder := newTaskSideEffectRecorder()
+	starter := newTestTaskStarter(t, f, recorder)
+	require.NoError(t, starter.finishGenerationTurn(WithAgentSlotLease(ctx, lease), machine, chatWorkerTaskStartInput{
+		ChatID:            chat.ID,
+		WorkerID:          workerID,
+		RunnerID:          runnerID,
+		HistoryVersion:    current.HistoryVersion,
+		GenerationAttempt: current.GenerationAttempt,
+		Status:            database.ChatStatusRunning,
+	}, generationDecision{}, generationAttemptNotRequired))
+
+	require.Contains(t, testutil.RequireReceive(ctx, t, eventsAtPublish), "turn_complete")
+	latest, err := f.db.GetChatByID(ctx, chat.ID)
+	require.NoError(t, err)
+	require.Equal(t, database.ChatStatusRunning, latest.Status, "queued message should have been promoted")
 }
 
 func TestReleaseAgentSlotOnTransition(t *testing.T) {
