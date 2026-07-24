@@ -1728,7 +1728,7 @@ curl -X GET http://coder-server:8080/api/v2/organizations/{organization}/ai/spen
 `GET /api/v2/organizations/{organization}/ai/spend/export`
 
 Returns per-user, per-group, per-model, per-provider aggregated AI spend for the organization as CSV, built from raw AI Gateway token usage.
-The optional start and end query parameters bound the period and are interpreted as UTC; both default to the current budget period when omitted.
+The optional start and end query parameters bound the period and are interpreted as UTC. They must be provided together and span at most 31 days; when both are omitted the current UTC monthly period is used.
 
 ### Parameters
 
