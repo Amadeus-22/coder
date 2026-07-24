@@ -48,6 +48,7 @@ import (
 	coderdpubsub "github.com/coder/coder/v2/coderd/pubsub"
 	"github.com/coder/coder/v2/coderd/rbac"
 	"github.com/coder/coder/v2/coderd/rbac/policy"
+	"github.com/coder/coder/v2/coderd/rbac/rolestore"
 	"github.com/coder/coder/v2/coderd/util/ptr"
 	"github.com/coder/coder/v2/codersdk"
 	"github.com/coder/coder/v2/cryptorand"
@@ -222,6 +223,33 @@ func TestAuthorization(t *testing.T) {
 				db.EXPECT().GetAPIKeyByID(gomock.Any(), apiKey.ID).Times(1).Return(apiKey, nil)
 				db.EXPECT().GetUserByID(gomock.Any(), user.ID).Times(1).Return(user, nil)
 				expectMemberRoles(db, user)
+			},
+		},
+		{
+			// A service account's interception create permission also comes
+			// from the site member role. Its organization-service-account
+			// role is DB-backed, so expansion goes through CustomRoles.
+			name: "valid service account",
+			mocksFn: func(db *dbmock.MockStore, apiKey database.APIKey, user database.User) {
+				orgID := uuid.New()
+				db.EXPECT().GetAPIKeyByID(gomock.Any(), apiKey.ID).Times(1).Return(apiKey, nil)
+				db.EXPECT().GetUserByID(gomock.Any(), user.ID).Times(1).Return(user, nil)
+				db.EXPECT().GetAuthorizationUserRoles(gomock.Any(), user.ID).Times(1).Return(database.GetAuthorizationUserRolesRow{
+					ID:       user.ID,
+					Username: user.Username,
+					Email:    user.Email,
+					Status:   user.Status,
+					Roles: []string{
+						"member",
+						fmt.Sprintf("organization-service-account:%s", orgID),
+					},
+					Groups: []string{},
+				}, nil)
+				db.EXPECT().CustomRoles(gomock.Any(), gomock.Any()).Times(1).Return([]database.CustomRole{{
+					Name:              rbac.RoleOrgServiceAccount(),
+					OrganizationID:    uuid.NullUUID{UUID: orgID, Valid: true},
+					MemberPermissions: rolestore.ConvertPermissionsToDB(rbac.OrgServiceAccountPermissions(rbac.OrgSettings{}).Member),
+				}}, nil)
 			},
 		},
 		{
