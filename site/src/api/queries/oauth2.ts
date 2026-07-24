@@ -6,6 +6,7 @@ const appsKey = ["oauth2-provider", "apps"];
 const userAppsKey = (userId: string) => appsKey.concat(userId);
 const appKey = (appId: string) => appsKey.concat(appId);
 const appSecretsKey = (appId: string) => appKey(appId).concat("secrets");
+const settingsKey = ["oauth2-provider", "settings"];
 
 export const getGitHubDevice = () => {
 	return {
@@ -113,6 +114,24 @@ export const revokeApp = (queryClient: QueryClient, userId: string) => {
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
 				queryKey: userAppsKey(userId),
+			});
+		},
+	};
+};
+
+export const getOAuth2ProviderSettings = () => {
+	return {
+		queryKey: settingsKey,
+		queryFn: () => API.getOAuth2ProviderSettings(),
+	};
+};
+
+export const putOAuth2ProviderSettings = (queryClient: QueryClient) => {
+	return {
+		mutationFn: API.putOAuth2ProviderSettings,
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: settingsKey,
 			});
 		},
 	};
