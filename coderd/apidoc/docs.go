@@ -4754,7 +4754,7 @@ const docTemplate = `{
         },
         "/api/v2/organizations/{organization}/ai/spend/export": {
             "get": {
-                "description": "Returns per-user, per-group, per-model, per-provider aggregated AI spend for the organization as CSV, built from raw AI Gateway token usage.\nThe optional start and end query parameters bound the period and are interpreted as UTC. They must be provided together and span at most 31 days; when both are omitted the current UTC monthly period is used.",
+                "description": "Returns per-user, per-group, per-model, per-provider aggregated AI spend for the organization as CSV, built from raw AI Gateway token usage.\nThe optional period_start and period_end query parameters bound the period and are interpreted as UTC. They must be provided together and span at most 31 days; when both are omitted the current UTC monthly period is used.",
                 "produces": [
                     "text/csv"
                 ],
@@ -4776,14 +4776,14 @@ const docTemplate = `{
                         "type": "string",
                         "format": "date-time",
                         "description": "Inclusive lower bound (RFC3339)",
-                        "name": "start",
+                        "name": "period_start",
                         "in": "query"
                     },
                     {
                         "type": "string",
                         "format": "date-time",
                         "description": "Exclusive upper bound (RFC3339)",
-                        "name": "end",
+                        "name": "period_end",
                         "in": "query"
                     }
                 ],
