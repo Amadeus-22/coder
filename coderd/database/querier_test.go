@@ -12058,6 +12058,71 @@ func TestInsertChatMessages(t *testing.T) {
 	})
 }
 
+func TestGetChatMessagesByChatIDOrdersEqualTimestampsByID(t *testing.T) {
+	t.Parallel()
+
+	db, _ := dbtestutil.NewDB(t)
+	ctx := context.Background()
+
+	org := dbgen.Organization(t, db, database.Organization{})
+	owner := dbgen.User(t, db, database.User{})
+	modelCfg := dbgen.ChatModelConfig(t, db, database.ChatModelConfig{
+		CreatedBy: uuid.NullUUID{UUID: owner.ID, Valid: true},
+		UpdatedBy: uuid.NullUUID{UUID: owner.ID, Valid: true},
+	})
+	chat := dbgen.Chat(t, db, database.Chat{
+		OrganizationID:    org.ID,
+		OwnerID:           owner.ID,
+		LastModelConfigID: modelCfg.ID,
+	})
+
+	var inserted []database.ChatMessage
+	err := db.InTx(func(tx database.Store) error {
+		for range 3 {
+			messages, err := tx.InsertChatMessages(ctx, database.InsertChatMessagesParams{
+				ChatID:              chat.ID,
+				CreatedBy:           []uuid.UUID{owner.ID},
+				ModelConfigID:       []uuid.UUID{modelCfg.ID},
+				Role:                []database.ChatMessageRole{database.ChatMessageRoleUser},
+				ContentVersion:      []int16{chatprompt.CurrentContentVersion},
+				Visibility:          []database.ChatMessageVisibility{database.ChatMessageVisibilityBoth},
+				Content:             []string{`[]`},
+				InputTokens:         []int64{0},
+				OutputTokens:        []int64{0},
+				TotalTokens:         []int64{0},
+				ReasoningTokens:     []int64{0},
+				CacheCreationTokens: []int64{0},
+				CacheReadTokens:     []int64{0},
+				ContextLimit:        []int64{0},
+				Compressed:          []bool{false},
+				TotalCostMicros:     []int64{0},
+				RuntimeMs:           []int64{0},
+			})
+			if err != nil {
+				return err
+			}
+			inserted = append(inserted, messages[0])
+		}
+		return nil
+	}, nil)
+	require.NoError(t, err)
+	require.Len(t, inserted, 3)
+	require.Equal(t, inserted[0].CreatedAt, inserted[1].CreatedAt)
+	require.Equal(t, inserted[0].CreatedAt, inserted[2].CreatedAt)
+
+	messages, err := db.GetChatMessagesByChatID(ctx, database.GetChatMessagesByChatIDParams{
+		ChatID:  chat.ID,
+		AfterID: 0,
+	})
+	require.NoError(t, err)
+	require.Len(t, messages, 3)
+	require.Equal(t, []int64{inserted[0].ID, inserted[1].ID, inserted[2].ID}, []int64{
+		messages[0].ID,
+		messages[1].ID,
+		messages[2].ID,
+	})
+}
+
 func TestGetChatMessagesForPromptByChatID(t *testing.T) {
 	t.Parallel()
 

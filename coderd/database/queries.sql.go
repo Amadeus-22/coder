@@ -7933,7 +7933,7 @@ WHERE
     AND visibility IN ('user', 'both')
     AND deleted = false
 ORDER BY
-    created_at ASC
+    created_at ASC, id ASC
 `
 
 type GetChatMessagesByChatIDParams struct {
